@@ -1,0 +1,158 @@
+package control
+
+import (
+	"errors"
+	"io"
+	"log"
+	"net"
+)
+
+const (
+	VarHeaderLen = 10
+	// 4 bytes to represent data in variable header and
+	// the payload, the top bit excluded.
+	MaxRemainLen = 1 << 28
+)
+
+// Header : MQTT header interface
+type Header interface {
+	Marshal([]byte)
+	Parse() []byte
+	String() string
+}
+
+// EncodeRemainLen : Encode remaining length value
+func EncodeRemainLen(remainLen int) []int {
+	var digits []int
+	for {
+		digit := remainLen % 128
+		remainLen = remainLen / 128
+		if remainLen > 0 {
+			digit |= 128
+		}
+		digits = append(digits, digit)
+		if remainLen <= 0 {
+			break
+		}
+	}
+	return digits
+}
+
+// DecodeRemainLen : Decode remaining length digits to value
+func DecodeRemainLen(digits []int) (int, error) {
+	value := 0
+	multiplier := 1
+	for _, v := range digits {
+		value += (v & 127) * multiplier
+		if multiplier > 128*128*128 {
+			return 0, errors.New("malformed remain length")
+		}
+		multiplier *= 128
+	}
+	return value, nil
+}
+
+// ParseRemainLenDigits : Parse remaining digits from header
+func ParseRemainLenDigits(evalBytes []byte) ([]int, error) {
+	if evalBytes == nil || len(evalBytes) < 1 {
+		return nil, errors.New("invalid evaluating bytes")
+	}
+	var remainLenDigits []int
+	for i := 0; i < len(evalBytes); i++ {
+		remainLenDigits = append(remainLenDigits, int(evalBytes[i]))
+		// If the top bit of is 1, then continue to get remaining length field bit
+		if evalBytes[i]>>7 == 1 {
+			continue
+		} else {
+			break
+		}
+	}
+	return remainLenDigits, nil
+}
+
+// GetFixedHeaderLen : Get fixed header length
+func GetFixedHeaderLen(evalBytes []byte) (int, error) {
+	digits, err := ParseRemainLenDigits(evalBytes)
+	if err != nil {
+		return 0, err
+	}
+	return len(digits) + 1, nil
+}
+
+// GetRemainLen : Get remaining length
+func GetRemainLen(evalBytes []byte) (int, error) {
+	remainLenDigits, err := ParseRemainLenDigits(evalBytes)
+	if err != nil {
+		return 0, err
+	}
+	remainLen, err := DecodeRemainLen(remainLenDigits)
+	if err != nil {
+		return 0, err
+	}
+	return remainLen, nil
+}
+
+// GetPackLen : Get the packet length
+func GetPackLen(evalBytes []byte) (int, error) {
+	remainLenDigits, err := ParseRemainLenDigits(evalBytes)
+	if err != nil {
+		return 0, errors.New("parse remaining length digits err")
+	}
+	remainLen, err := DecodeRemainLen(remainLenDigits)
+	if err != nil {
+		return 0, errors.New("get protocal header reamain length error")
+	}
+	log.Println("remaining length => ", remainLen)
+	packLen := 1 + len(remainLenDigits) + remainLen
+	log.Println("packet length => ", packLen)
+	return packLen, nil
+}
+
+func calculateRemainLenBytes(remainLen int) (int, error) {
+	remainBytesLen := 1
+	// calculate how many bytes should be assigned to the remaining lenth field
+	if remainLen < 1<<7 {
+		remainBytesLen = 1
+	} else if remainLen < 1<<14 {
+		remainBytesLen = 2
+	} else if remainLen < 1<<21 {
+		remainBytesLen = 3
+	} else if remainLen < 1<<28 {
+		remainBytesLen = 4
+	} else {
+		return 0, errors.New("calculate remain bytes error")
+	}
+
+	return remainBytesLen, nil
+}
+
+// ReadPacket : Read MQTT packet from stream
+func ReadPacket(conn net.Conn) ([]byte, error) {
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 128)
+	i := 0
+	packLen := 0
+	for {
+		n, err := conn.Read(tmp)
+		if err != nil {
+			if err != io.EOF {
+				log.Println("read data error")
+			}
+			break
+		}
+		if i == 0 {
+			packLenParsed, err := GetPackLen(tmp[1:5])
+			if err != nil {
+				log.Println(err)
+				return nil, err
+			}
+			packLen = packLenParsed
+			i++
+		}
+		buf = append(buf, tmp[:n]...)
+		if len(buf) >= packLen {
+			break
+		}
+	}
+	return buf, nil
+}
