@@ -5,6 +5,7 @@ import (
 	"log"
 	"mqtt/control"
 	"mqtt/store"
+	"mqtt/utils"
 	"net"
 	"strings"
 )
@@ -41,7 +42,7 @@ func handleConn(conn net.Conn) {
 	if b[0]>>4 == control.CONNECT {
 		fmt.Println("Connection packet detected.")
 		packet, err := control.ParseConnectPacket(b)
-		if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], "") {
+		if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
 			log.Println("Repeated connection request, disconnecting....")
 			conn.Close()
 			delete(store.ClientIDMap, packet.Payload.ClientID)

@@ -4,7 +4,9 @@ import (
 	"errors"
 	"io"
 	"log"
+	"mqtt/utils"
 	"net"
+	"time"
 )
 
 const (
@@ -130,28 +132,36 @@ func calculateRemainLenBytes(remainLen int) (int, error) {
 func ReadPacket(conn net.Conn) ([]byte, error) {
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 128)
-	i := 0
+	packLenAlereadyParsed := false
 	packLen := 0
+	timeout := time.After(utils.ReadPackTimeout)
+loop:
 	for {
-		n, err := conn.Read(tmp)
-		if err != nil {
-			if err != io.EOF {
-				log.Println("read data error")
-			}
-			break
-		}
-		if i == 0 {
-			packLenParsed, err := GetPackLen(tmp[1:5])
+		select {
+		case <-timeout:
+			return nil, errors.New("read TCP packet timeout")
+		default:
+			n, err := conn.Read(tmp)
 			if err != nil {
-				log.Println(err)
-				return nil, err
+				if err != io.EOF {
+					log.Println("read data error")
+					return nil, err
+				}
+				break
 			}
-			packLen = packLenParsed
-			i++
-		}
-		buf = append(buf, tmp[:n]...)
-		if len(buf) >= packLen {
-			break
+			if !packLenAlereadyParsed {
+				packLenParsed, err := GetPackLen(tmp[1:5])
+				if err != nil {
+					log.Println(err)
+					return nil, err
+				}
+				packLen = packLenParsed
+				packLenAlereadyParsed = true
+			}
+			buf = append(buf, tmp[:n]...)
+			if len(buf) >= packLen {
+				break loop
+			}
 		}
 	}
 	return buf, nil
