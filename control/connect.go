@@ -37,12 +37,6 @@ type ConnectPacket struct {
 	Payload *ConnectPayload
 }
 
-// ConnAckHeader : Connect acknowledgement header
-type ConnAckHeader struct {
-	Flags      int
-	ReturnCode int
-}
-
 // Marshal : Marshal header to bytes
 func (header *ConnectHeader) Marshal(payloadLen int) ([]byte, error) {
 	if header == nil {

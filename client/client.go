@@ -24,7 +24,7 @@ func main() {
 func (c *Client) Connect() {
 	header := new(control.ConnectHeader)
 	payload := &control.ConnectPayload{
-		ClientID:  "client_id看",
+		ClientID:  "KKKKK-XXX-YYY-ZZZ",
 		WillTopic: "willtopic",
 		WillMsg:   "will message fdsfsdfsdfsdfsdfsdfsdfsdfsdfsee",
 		UserName:  "ray",
@@ -51,7 +51,7 @@ func (c *Client) Connect() {
 	c.Conn = conn
 
 	fmt.Fprintf(conn, string(pack))
-	data, err := bufio.NewReader(conn).ReadString('\n')
+	data, err := bufio.NewReader(conn).ReadBytes('\n')
 	if err != nil {
 		log.Println("error of reading content")
 	}

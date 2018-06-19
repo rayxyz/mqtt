@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Constants
 const (
 	VarHeaderLen = 10
 	// 4 bytes to represent data in variable header and
@@ -94,6 +95,30 @@ func GetRemainLen(evalBytes []byte) (int, error) {
 	return remainLen, nil
 }
 
+// GenRemainLenBytes : generate remaining length bytes
+func GenRemainLenBytes(remainLen int) []byte {
+	digits := EncodeRemainLen(remainLen)
+	remainLenBytes := make([]byte, len(digits))
+	if len(digits) == 1 {
+		remainLenBytes[0] = byte(remainLen)
+	} else if len(digits) == 2 {
+		// binary.BigEndian.PutUint16(remainLenBytes[0:len(digits)], uint16(remainLen))
+		remainLenBytes[0] = byte(digits[0])
+		remainLenBytes[1] = byte(digits[1])
+	} else if len(digits) == 3 {
+		// binary.BigEndian.PutUint32(remainLenBytes[0:len(digits)], uint32(remainLen))
+		remainLenBytes[0] = byte(digits[0])
+		remainLenBytes[1] = byte(digits[1])
+		remainLenBytes[2] = byte(digits[2])
+	} else {
+		remainLenBytes[0] = byte(digits[0])
+		remainLenBytes[1] = byte(digits[1])
+		remainLenBytes[2] = byte(digits[2])
+		remainLenBytes[3] = byte(digits[3])
+	}
+	return remainLenBytes
+}
+
 // GetPackLen : Get the packet length
 func GetPackLen(evalBytes []byte) (int, error) {
 	remainLenDigits, err := ParseRemainLenDigits(evalBytes)
@@ -134,7 +159,7 @@ func ReadPacket(conn net.Conn) ([]byte, error) {
 	tmp := make([]byte, 128)
 	packLenAlereadyParsed := false
 	packLen := 0
-	timeout := time.After(utils.ReadPackTimeout)
+	timeout := time.After(utils.ReadPackTimeout * time.Second)
 loop:
 	for {
 		select {
@@ -143,11 +168,11 @@ loop:
 		default:
 			n, err := conn.Read(tmp)
 			if err != nil {
-				if err != io.EOF {
-					log.Println("read data error")
-					return nil, err
+				if err == io.EOF {
+					break loop
 				}
-				break
+				log.Println("read data error")
+				return nil, err
 			}
 			if !packLenAlereadyParsed {
 				packLenParsed, err := GetPackLen(tmp[1:5])

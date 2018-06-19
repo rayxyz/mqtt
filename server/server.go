@@ -39,21 +39,53 @@ func handleConn(conn net.Conn) {
 		return
 	}
 	log.Println(" data lenth => ", len(b), "data received => ", b)
-	if b[0]>>4 == control.CONNECT {
-		fmt.Println("Connection packet detected.")
-		packet, err := control.ParseConnectPacket(b)
-		if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
-			log.Println("Repeated connection request, disconnecting....")
-			conn.Close()
-			delete(store.ClientIDMap, packet.Payload.ClientID)
-			log.Println("Disconnected client => ", packet.Payload.ClientID)
-			return
-		}
-		store.ClientIDMap[packet.Payload.ClientID] = packet.Payload.ClientID
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		conn.Write([]byte("header => " + (packet.Header.String()) + "  |||||| payload => " + fmt.Sprintf("%#v", packet.Payload) + "\n"))
+	packet, err := control.ParseConnectPacket(b)
+	if err != nil {
+		log.Println(err)
+		return
 	}
+	switch packet.Header.PackType {
+	case control.CONNECT:
+		fmt.Println("<<<Connect>>>")
+		handleConnect(conn, packet)
+	case control.PUBLISH:
+		fmt.Println("<<<Publish>>>")
+	case control.SUBSCRIBE:
+		fmt.Println("<<<Subscribe>>>")
+	case control.UNSUBSCRIBE:
+		fmt.Println("<<<Unsubscribe>>>")
+	case control.PINGREQ:
+		fmt.Println("<<<PingReq>>>")
+	case control.DISCONNECT:
+		fmt.Println("<<<Disconnect>>>")
+	default:
+		log.Println("no MQTT controll packet type matched")
+		conn.Close()
+		return
+	}
+}
+
+func handleConnect(conn net.Conn, packet *control.ConnectPacket) {
+	log.Println("protocol name => ", packet.Header.ProtocName)
+	header := new(control.ConnAckHeader)
+	if !strings.EqualFold(packet.Header.ProtocName, utils.ProtocName) {
+		headerBytes, _ := header.Marshal(1)
+		headerBytes = append(headerBytes, '\n')
+		conn.Write(headerBytes)
+		conn.Close()
+		return
+	}
+	if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
+		headerBytes, _ := header.Marshal(2)
+		headerBytes = append(headerBytes, '\n')
+		conn.Write(headerBytes)
+		conn.Close()
+		delete(store.ClientIDMap, packet.Payload.ClientID)
+		log.Println("disconnected client => ", packet.Payload.ClientID)
+		return
+	}
+	store.ClientIDMap[packet.Payload.ClientID] = packet.Payload.ClientID
+	headerBytes, _ := header.Marshal(0)
+	headerBytes = append(headerBytes, '\n')
+	conn.Write(headerBytes)
 }
