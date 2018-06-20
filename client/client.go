@@ -7,6 +7,7 @@ import (
 	"log"
 	"mqtt/control"
 	"net"
+	"time"
 )
 
 // Client : MQTT Client
@@ -34,7 +35,7 @@ func (c *Client) Connect() {
 	if err != nil {
 		panic("marsh payload error")
 	}
-	headerBytes, err := header.Marshal(len(payloadBytes))
+	headerBytes, err := header.Marshal(len(payloadBytes), payload)
 	if err != nil {
 		panic("marshal header error")
 	}
@@ -51,9 +52,37 @@ func (c *Client) Connect() {
 	c.Conn = conn
 
 	fmt.Fprintf(conn, string(pack))
-	data, err := bufio.NewReader(conn).ReadBytes('\n')
-	if err != nil {
-		log.Println("error of reading content")
+
+	timeout := time.After(10 * time.Second)
+loop:
+	for {
+		select {
+		case <-timeout:
+			log.Println("error: timeout")
+			conn.Close()
+			break loop
+		default:
+			data, err := bufio.NewReader(conn).ReadBytes('\n')
+			if err != nil {
+				log.Println("error of reading content")
+				conn.Close()
+				return
+			}
+			if len(data) <= 0 {
+				log.Println("error connect acknowledgement")
+				conn.Close()
+				return
+			}
+			connack := new(control.ConnAckHeader)
+			connack.Parse(data)
+			fmt.Printf("ack => %#v\n", connack)
+			if connack.PackType != control.CONNACK {
+				log.Println("wrong connect packet type")
+				conn.Close()
+				return
+			}
+			fmt.Println(data)
+			break loop
+		}
 	}
-	fmt.Println(data)
 }

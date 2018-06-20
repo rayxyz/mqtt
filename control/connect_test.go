@@ -16,7 +16,7 @@ func TestConnect(t *testing.T) {
 		Password:  "ray123",
 	}
 	payloadBytes, _ := json.Marshal(payload)
-	b, err := header.Marshal(len(payloadBytes))
+	b, err := header.Marshal(len(payloadBytes), payload)
 	if err != nil {
 		fmt.Println(err)
 	}

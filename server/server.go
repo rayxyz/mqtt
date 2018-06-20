@@ -67,25 +67,34 @@ func handleConn(conn net.Conn) {
 
 func handleConnect(conn net.Conn, packet *control.ConnectPacket) {
 	log.Println("protocol name => ", packet.Header.ProtocName)
-	header := new(control.ConnAckHeader)
+	ackHeader := new(control.ConnAckHeader)
 	if !strings.EqualFold(packet.Header.ProtocName, utils.ProtocName) {
-		headerBytes, _ := header.Marshal(1)
+		headerBytes, _ := ackHeader.Marshal(1)
 		headerBytes = append(headerBytes, '\n')
 		conn.Write(headerBytes)
 		conn.Close()
 		return
 	}
 	if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
-		headerBytes, _ := header.Marshal(2)
+		headerBytes, _ := ackHeader.Marshal(2)
 		headerBytes = append(headerBytes, '\n')
 		conn.Write(headerBytes)
 		conn.Close()
 		delete(store.ClientIDMap, packet.Payload.ClientID)
 		log.Println("disconnected client => ", packet.Payload.ClientID)
 		return
+	} else {
+		// clean session not set
+		if packet.Header.Flags&(1<<1) == 0 {
+			headerBytes, _ := ackHeader.Marshal(2)
+			headerBytes = append(headerBytes, '\n')
+			conn.Write(headerBytes)
+			conn.Close()
+			return
+		}
 	}
 	store.ClientIDMap[packet.Payload.ClientID] = packet.Payload.ClientID
-	headerBytes, _ := header.Marshal(0)
-	headerBytes = append(headerBytes, '\n')
-	conn.Write(headerBytes)
+	ackHeaderBytes, _ := ackHeader.Marshal(0)
+	ackHeaderBytes = append(ackHeaderBytes, '\n')
+	conn.Write(ackHeaderBytes)
 }

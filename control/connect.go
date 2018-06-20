@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mqtt/utils"
+	"strings"
 )
 
 // ConnectHeader : Connect header
@@ -38,35 +40,15 @@ type ConnectPacket struct {
 }
 
 // Marshal : Marshal header to bytes
-func (header *ConnectHeader) Marshal(payloadLen int) ([]byte, error) {
+func (header *ConnectHeader) Marshal(payloadLen int, payload *ConnectPayload) ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("connect header is nil")
 	}
-	// payLoadLen := len(payLoad.ClientID) + len(payLoad.WillTopic) + len(payLoad.WillMsg) +
-	// 	len(payLoad.UserName) + len(payLoad.Password)
 	remainLen := VarHeaderLen + payloadLen
 	if remainLen > MaxRemainLen {
 		return nil, errors.New("connect data is too big")
 	}
-	digits := EncodeRemainLen(remainLen)
-	remainLenBytes := make([]byte, len(digits))
-	if len(digits) == 1 {
-		remainLenBytes[0] = byte(remainLen)
-	} else if len(digits) == 2 {
-		// binary.BigEndian.PutUint16(remainLenBytes[0:len(digits)], uint16(remainLen))
-		remainLenBytes[0] = byte(digits[0])
-		remainLenBytes[1] = byte(digits[1])
-	} else if len(digits) == 3 {
-		// binary.BigEndian.PutUint32(remainLenBytes[0:len(digits)], uint32(remainLen))
-		remainLenBytes[0] = byte(digits[0])
-		remainLenBytes[1] = byte(digits[1])
-		remainLenBytes[2] = byte(digits[2])
-	} else {
-		remainLenBytes[0] = byte(digits[0])
-		remainLenBytes[1] = byte(digits[1])
-		remainLenBytes[2] = byte(digits[2])
-		remainLenBytes[3] = byte(digits[3])
-	}
+	remainLenBytes := GenRemainLenBytes(remainLen)
 	fixedHeaderLen := len(remainLenBytes) + 1
 	b := make([]byte, fixedHeaderLen+VarHeaderLen)
 	b[0] = 1 << 4
@@ -82,14 +64,22 @@ func (header *ConnectHeader) Marshal(payloadLen int) ([]byte, error) {
 	b[fixedHeaderLen+5] = 'T'
 	b[fixedHeaderLen+6] = 1 << 2 // Protoc level
 	// Connect flags
-	b[fixedHeaderLen+7] = 1 << 7   // Set user name flag to 1
-	b[fixedHeaderLen+7] |= 1 << 6  // Set password flag to 1
+	if !strings.EqualFold(payload.UserName, utils.Blank) {
+		b[fixedHeaderLen+7] = 1 << 7 // Set user name flag to 1
+	}
+	if !strings.EqualFold(payload.Password, utils.Blank) {
+		b[fixedHeaderLen+7] |= 1 << 6 // Set password flag to 1
+	}
 	b[fixedHeaderLen+7] &^= 1 << 5 // Set will retain flag to 0
 	// Set QoS flags to 01
 	b[fixedHeaderLen+7] &^= 1 << 4
 	b[fixedHeaderLen+7] |= 1 << 3
-	b[fixedHeaderLen+7] |= 1 << 2       // Set will flag to 1
-	b[fixedHeaderLen+7] |= 1 << 1       // Set Clean session to 1
+	if !strings.EqualFold(payload.WillTopic, utils.Blank) {
+		b[fixedHeaderLen+7] |= 1 << 2 // Set will flag to 1
+	}
+	if strings.EqualFold(payload.ClientID, utils.Blank) {
+		b[fixedHeaderLen+7] |= 1 << 1 // Set Clean session to 1
+	}
 	b[fixedHeaderLen+7] &^= 1 << 0      // Clear reserved field
 	b[fixedHeaderLen+8] = 0             // Keep Alive MSB
 	b[fixedHeaderLen+9] = (1<<3 | 1<<1) // Keep Alive LSB

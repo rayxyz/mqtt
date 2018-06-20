@@ -59,6 +59,7 @@ func TestBitSetunset(t *testing.T) {
 	b &^= 1 << 4
 	fmt.Printf("after unset pos 4 to 0 => %08b decimal => %d\n", b, b)
 	fmt.Println("the bit at pos 2 is => ", (b&(1<<2) != 0))
-	fmt.Println("the bit at pos 3 is => ", (b&(1<<4) != 0))
+	fmt.Println("the bit at pos 3 is => ", (b&(1<<3) != 0))
 	fmt.Printf("(1<<3 | 1<<1) => %08b\n", (1<<3 | 1<<1))
+	fmt.Println("1<<1", 1<<0)
 }

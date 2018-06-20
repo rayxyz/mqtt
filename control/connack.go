@@ -50,7 +50,7 @@ func (header *ConnAckHeader) Marshal(returnCode int) ([]byte, error) {
 
 // Parse : parse connect header
 func (header *ConnAckHeader) Parse(b []byte) error {
-	header.PackType = int(b[0] >> 5)
+	header.PackType = int(b[0] >> 4)
 	remainLenDigits, err := ParseRemainLenDigits(b[1:3])
 	if err != nil {
 		return err
