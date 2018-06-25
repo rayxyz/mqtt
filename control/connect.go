@@ -155,7 +155,7 @@ func ParseConnectPacket(b []byte) (*ConnectPacket, error) {
 
 func (header *ConnectHeader) String() string {
 	if header == nil {
-		return "<nil>"
+		return ""
 	}
 	return fmt.Sprintf("remainlen=%d protoname=%s protolvl=%d flags=%d keepalive=%d", header.RemainLen, header.ProtocName, header.ProtocLevel, header.Flags, header.KeepAlive)
 }

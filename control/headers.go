@@ -1,19 +1,5 @@
 package control
 
-// PublishHeader : Publish header
-type PublishHeader struct {
-	PacketType int
-	DUPFlag    int
-	QoSLevel   int
-	RETAIN     int
-
-	TopicName []byte
-	PacKID    int
-}
-
-// PublishPayload : Publish payload
-type PublishPayload []byte
-
 // PubAckHeader : Publish acknowledgement header
 type PubAckHeader struct {
 	PackType  int
