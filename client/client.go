@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"mqtt/control"
+	"mqtt/utils"
 	"net"
 	"time"
 )
@@ -25,7 +27,7 @@ func main() {
 func (c *Client) Connect() {
 	header := new(control.ConnectHeader)
 	payload := &control.ConnectPayload{
-		ClientID:  "KKKKK-XXX-YYY-ZZZ",
+		ClientID:  utils.GenUUID(),
 		WillTopic: "willtopic",
 		WillMsg:   "will message fdsfsdfsdfsdfsdfsdfsdfsdfsdfsee",
 		UserName:  "ray",
@@ -42,6 +44,7 @@ func (c *Client) Connect() {
 	var pack []byte
 	pack = append(pack, headerBytes...)
 	pack = append(pack, payloadBytes...)
+	pack = append(pack, '\n')
 
 	log.Println(pack)
 
@@ -51,7 +54,8 @@ func (c *Client) Connect() {
 	}
 	c.Conn = conn
 
-	fmt.Fprintf(conn, string(pack))
+	// fmt.Fprintf(conn, string(pack))
+	conn.Write(pack)
 
 	timeout := time.After(10 * time.Second)
 loop:
@@ -85,4 +89,47 @@ loop:
 			break loop
 		}
 	}
+
+	log.Println("<<<<<<<<<<<<<<<<<< I will publish a message >>>>>>>>>>>>>>>>>>>>")
+
+	c.Publish("Hello, my friend!!!")
+}
+
+// Publish message
+func (c *Client) Publish(content interface{}) {
+	header := new(control.PublishHeader)
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(content); err != nil {
+		log.Println(err)
+		return
+	}
+	payload := &control.PublishPayload{
+		Content: buf.Bytes(),
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+		panic("marsh payload error")
+	}
+	headerBytes, err := header.Marshal(len(payloadBytes))
+	if err != nil {
+		log.Println(err)
+		panic("marshal header error")
+	}
+
+	var pack []byte
+	pack = append(pack, headerBytes...)
+	pack = append(pack, payloadBytes...)
+
+	log.Println(pack)
+
+	// n, err := fmt.Fprintf(c.Conn, string(pack))
+	n, err := c.Conn.Write(pack)
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println("n => ", n)
+
+	log.Println("After sending the publish message.")
 }

@@ -32,6 +32,7 @@ type ClientSession struct {
 	PingReqSent      bool
 	PingRespReceived bool
 	Connection       net.Conn
+	PackID           uint16
 }
 
 // ServerSession : session storged in server

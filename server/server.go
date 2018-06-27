@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"mqtt/control"
 	"mqtt/store"
@@ -9,6 +10,11 @@ import (
 	"net"
 	"strings"
 )
+
+type mqttServer struct {
+}
+
+var server = new(mqttServer)
 
 func main() {
 	fmt.Println("I am the primitive MQTT server, and I am alive...")
@@ -31,25 +37,62 @@ func init() {
 	store.ClientIDMap = make(map[string]string, 10)
 }
 
+// ReadPacket : Read MQTT packet from stream
 func handleConn(conn net.Conn) {
-	// defer conn.Close()
-	b, err := control.ReadPacket(conn)
-	if err != nil {
-		log.Println(err)
-		return
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 128)
+	packLenAlereadyParsed := false
+	packLen := 0
+
+	for {
+		n, err := conn.Read(tmp)
+		if err != nil {
+			if err == io.EOF {
+				// buf = make([]byte, 0, 4096)
+				// tmp = make([]byte, 128)
+				// packLenAlereadyParsed = false
+				// packLen = 0
+			} else {
+				log.Println("read data error")
+			}
+		}
+		if !packLenAlereadyParsed {
+			packLenParsed, err := control.GetPackLen(tmp[1:5])
+			if err != nil {
+				log.Println(err)
+			}
+			packLen = packLenParsed
+			packLenAlereadyParsed = true
+		}
+		buf = append(buf, tmp[:n]...)
+		if len(buf) >= packLen {
+			go server.handlePacket(conn, buf)
+		}
 	}
-	log.Println(" data lenth => ", len(b), "data received => ", b)
-	packet, err := control.ParseConnectPacket(b)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	switch packet.Header.PackType {
+}
+
+func (s *mqttServer) handlePacket(conn net.Conn, b []byte) {
+	cpt := b[0] >> 4
+
+	log.Println("|||||||||||||||||||||||||||||| >>>>>>>>> cpt => ", cpt)
+
+	switch cpt {
 	case control.CONNECT:
-		fmt.Println("<<<Connect>>>")
-		handleConnect(conn, packet)
+		packet, err := control.ParseConnectPacket(b)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		fmt.Println("<<<Connect>>> client_id => ", packet.Payload.ClientID)
+		s.handleConnect(conn, packet)
 	case control.PUBLISH:
 		fmt.Println("<<<Publish>>>")
+		packet, err := control.ParsePublishPacket(b)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		s.handlePublish(conn, packet)
 	case control.SUBSCRIBE:
 		fmt.Println("<<<Subscribe>>>")
 	case control.UNSUBSCRIBE:
@@ -65,7 +108,7 @@ func handleConn(conn net.Conn) {
 	}
 }
 
-func handleConnect(conn net.Conn, packet *control.ConnectPacket) {
+func (s *mqttServer) handleConnect(conn net.Conn, packet *control.ConnectPacket) {
 	log.Println("protocol name => ", packet.Header.ProtocName)
 	ackHeader := new(control.ConnAckHeader)
 	if !strings.EqualFold(packet.Header.ProtocName, utils.ProtocName) {
@@ -97,4 +140,8 @@ func handleConnect(conn net.Conn, packet *control.ConnectPacket) {
 	ackHeaderBytes, _ := ackHeader.Marshal(0)
 	ackHeaderBytes = append(ackHeaderBytes, '\n')
 	conn.Write(ackHeaderBytes)
+}
+
+func (s *mqttServer) handlePublish(conn net.Conn, packet *control.PublishPacket) {
+	log.Println("publish pack => ", packet)
 }
