@@ -46,7 +46,7 @@ func (header *PublishHeader) Marshal(payloadLen int) ([]byte, error) {
 	remainLenBytes := GenRemainLenBytes(remainLen)
 	fixedHeaderLen := len(remainLenBytes) + 1
 	b := make([]byte, fixedHeaderLen+publishVarHeaderLen)
-	b[0] = 1 << 5
+	b[0] = 1<<5 | 1<<4
 	if header.DUPFlag == 1 {
 		b[0] |= 1 << 3
 	}

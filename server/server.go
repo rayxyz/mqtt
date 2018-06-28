@@ -11,8 +11,7 @@ import (
 	"strings"
 )
 
-type mqttServer struct {
-}
+type mqttServer struct{}
 
 var server = new(mqttServer)
 
@@ -37,40 +36,61 @@ func init() {
 	store.ClientIDMap = make(map[string]string, 10)
 }
 
-// ReadPacket : Read MQTT packet from stream
 func handleConn(conn net.Conn) {
+	ch := make(chan []byte)
+	ech := make(chan error)
+
 	buf := make([]byte, 0, 4096)
-	tmp := make([]byte, 128)
 	packLenAlereadyParsed := false
 	packLen := 0
 
+	go func(ch chan []byte, ech chan error) {
+		tmp := make([]byte, 1024)
+
+		counter := 0
+		for {
+			n, err := conn.Read(tmp)
+			if err != nil && err != io.EOF {
+				ech <- err
+				break
+			}
+			counter++
+			if n > 0 {
+				log.Println("counter => ", counter, " n => ", n)
+				if n < len(tmp) {
+					tmp = tmp[:n]
+				}
+				ch <- tmp
+			}
+		}
+	}(ch, ech)
+
 	for {
-		n, err := conn.Read(tmp)
-		if err != nil {
-			if err == io.EOF {
-				// buf = make([]byte, 0, 4096)
-				// tmp = make([]byte, 128)
-				// packLenAlereadyParsed = false
-				// packLen = 0
-			} else {
-				log.Println("read data error")
+		select {
+		case data := <-ch:
+			log.Println("data => ", data)
+			if !packLenAlereadyParsed {
+				packLenParsed, err := control.GetPackLen(data[1:5])
+				if err != nil {
+					log.Println(err)
+				}
+				log.Println("pack_len => ", packLenParsed)
+				// packLen = packLenParsed
+				packLenAlereadyParsed = true
 			}
-		}
-		if !packLenAlereadyParsed {
-			packLenParsed, err := control.GetPackLen(tmp[1:5])
-			if err != nil {
-				log.Println(err)
+			buf = append(buf, data[:len(data)]...)
+			if len(buf) >= packLen {
+				server.handlePacket(conn, buf)
+				buf = append(buf[:0])
 			}
-			packLen = packLenParsed
-			packLenAlereadyParsed = true
-		}
-		buf = append(buf, tmp[:n]...)
-		if len(buf) >= packLen {
-			go server.handlePacket(conn, buf)
+		case err := <-ech:
+			log.Println(err)
+			break
 		}
 	}
 }
 
+// handlePacket : Read MQTT packet from stream and handle it
 func (s *mqttServer) handlePacket(conn net.Conn, b []byte) {
 	cpt := b[0] >> 4
 
