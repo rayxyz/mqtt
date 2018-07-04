@@ -39,10 +39,10 @@ func init() {
 func handleConn(conn net.Conn) {
 	ch := make(chan []byte)
 	ech := make(chan error)
-
-	buf := make([]byte, 0, 4096)
-	packLenAlereadyParsed := false
-	packLen := 0
+	//
+	// buf := make([]byte, 0, 4096)
+	// packLenAlereadyParsed := false
+	// packLen := 0
 
 	go func(ch chan []byte, ech chan error) {
 		tmp := make([]byte, 1024)
@@ -69,20 +69,27 @@ func handleConn(conn net.Conn) {
 		select {
 		case data := <-ch:
 			log.Println("data => ", data)
-			if !packLenAlereadyParsed {
-				packLenParsed, err := control.GetPackLen(data[1:5])
-				if err != nil {
-					log.Println(err)
-				}
-				log.Println("pack_len => ", packLenParsed)
-				// packLen = packLenParsed
-				packLenAlereadyParsed = true
-			}
-			buf = append(buf, data[:len(data)]...)
-			if len(buf) >= packLen {
-				server.handlePacket(conn, buf)
-				buf = append(buf[:0])
-			}
+			// if !packLenAlereadyParsed {
+			// 	packLenParsed, err := control.GetPackLen(data[1:5])
+			// 	if err != nil {
+			// 		log.Println(err)
+			// 	}
+			// 	log.Println("pack_len => ", packLenParsed)
+			// 	// packLen = packLenParsed
+			// 	packLenAlereadyParsed = true
+			// }
+			// buf = append(buf, data[:len(data)]...)
+			// if len(buf) >= packLen {
+			// 	server.handlePacket(conn, buf)
+			// 	buf = append(buf[:0])
+			// }
+			//
+			// packLenParsed, err := control.GetPackLen(data[1:5])
+			// if err != nil {
+			// 	log.Println(err)
+			// }
+			// log.Println("pack_len => ", packLenParsed)
+			server.handlePacket(conn, data)
 		case err := <-ech:
 			log.Println(err)
 			break
@@ -100,7 +107,6 @@ func (s *mqttServer) handlePacket(conn net.Conn, b []byte) {
 	case control.CONNECT:
 		packet, err := control.ParseConnectPacket(b)
 		if err != nil {
-			log.Println(err)
 			return
 		}
 		fmt.Println("<<<Connect>>> client_id => ", packet.Payload.ClientID)
@@ -138,14 +144,16 @@ func (s *mqttServer) handleConnect(conn net.Conn, packet *control.ConnectPacket)
 		conn.Close()
 		return
 	}
-	if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
-		headerBytes, _ := ackHeader.Marshal(2)
-		headerBytes = append(headerBytes, '\n')
-		conn.Write(headerBytes)
-		conn.Close()
-		delete(store.ClientIDMap, packet.Payload.ClientID)
-		log.Println("disconnected client => ", packet.Payload.ClientID)
-		return
+	if !strings.EqualFold(packet.Payload.ClientID, utils.Blank) {
+		if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
+			headerBytes, _ := ackHeader.Marshal(2)
+			headerBytes = append(headerBytes, '\n')
+			conn.Write(headerBytes)
+			conn.Close()
+			delete(store.ClientIDMap, packet.Payload.ClientID)
+			log.Println("disconnected client => ", packet.Payload.ClientID)
+			return
+		}
 	} else {
 		// clean session not set
 		if packet.Header.Flags&(1<<1) == 0 {
@@ -163,5 +171,6 @@ func (s *mqttServer) handleConnect(conn net.Conn, packet *control.ConnectPacket)
 }
 
 func (s *mqttServer) handlePublish(conn net.Conn, packet *control.PublishPacket) {
-	log.Println("publish pack => ", packet)
+	log.Printf("publish pack => %v", packet)
+	log.Println("payload => ", string(packet.Payload.Content))
 }

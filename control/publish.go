@@ -100,7 +100,7 @@ func ParsePublishHeader(b []byte) (*PublishHeader, error) {
 func ParsePublishPacket(b []byte) (*PublishPacket, error) {
 	fixedHeaderLen, err := GetFixedHeaderLen(b[1:5])
 	if err != nil {
-		log.Println(err)
+		log.Println("ParsePublishPacket => ", err)
 		return nil, err
 	}
 	headerLen := fixedHeaderLen + publishVarHeaderLen
@@ -110,14 +110,14 @@ func ParsePublishPacket(b []byte) (*PublishPacket, error) {
 		log.Println(err)
 		return nil, err
 	}
-	var payload PublishPayload
+	payload := new(PublishPayload)
 	log.Println("length of bytes => ", len(b))
-	if err = json.Unmarshal(b[headerLen-1:], &payload); err != nil {
+	if err = json.Unmarshal(b[headerLen:], payload); err != nil {
 		return nil, err
 	}
 	packet := &PublishPacket{
 		Header:  header,
-		Payload: &payload,
+		Payload: payload,
 	}
 	return packet, nil
 }

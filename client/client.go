@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -43,7 +44,7 @@ func (c *Client) Connect() {
 	var pack []byte
 	pack = append(pack, headerBytes...)
 	pack = append(pack, payloadBytes...)
-	pack = append(pack, '\n')
+	// pack = append(pack, '\n')
 
 	log.Println(pack)
 
@@ -56,57 +57,51 @@ func (c *Client) Connect() {
 	// fmt.Fprintf(conn, string(pack))
 	conn.Write(pack)
 
-	// 	timeout := time.After(10 * time.Second)
-	// loop:
-	// 	for {
-	// 		select {
-	// 		case <-timeout:
-	// 			log.Println("error: timeout")
-	// 			conn.Close()
-	// 			break loop
-	// 		default:
-	// 			data, err := bufio.NewReader(conn).ReadBytes('\n')
-	// 			if err != nil {
-	// 				log.Println("error of reading content")
-	// 				conn.Close()
-	// 				return
-	// 			}
-	// 			if len(data) <= 0 {
-	// 				log.Println("error connect acknowledgement")
-	// 				conn.Close()
-	// 				return
-	// 			}
-	// 			connack := new(control.ConnAckHeader)
-	// 			connack.Parse(data)
-	// 			fmt.Printf("ack => %#v\n", connack)
-	// 			if connack.PackType != control.CONNACK {
-	// 				log.Println("wrong connect packet type")
-	// 				conn.Close()
-	// 				return
-	// 			}
-	// 			fmt.Println(data)
-	// 			break loop
-	// 		}
-	// 	}
+	log.Println("conn is nil after connected => ", conn == nil)
+
+	revbytes := c.receive()
+	if len(revbytes) == 0 {
+		c.Conn.Close()
+		panic("error of receiving data from server")
+	}
+	connack := new(control.ConnAckHeader)
+	connack.Parse(revbytes)
+	fmt.Printf("ack => %#v\n", connack)
+	if connack.PackType != control.CONNACK {
+		log.Println("wrong connect packet type")
+		conn.Close()
+		return
+	}
 
 	log.Println("<<<<<<<<<<<<<<<<<< I will publish a message >>>>>>>>>>>>>>>>>>>>")
 
+	c.Publish("Hello, my friend!!!")
+}
+
+func (c *Client) receive() []byte {
+	timeout := time.After(10 * time.Second)
+loop:
 	for {
-		c.Publish("Hello, my friend!!!")
-		time.Sleep(3 * time.Second)
+		select {
+		case <-timeout:
+			log.Println("error: timeout")
+			c.Conn.Close()
+			break loop
+		default:
+			data, err := bufio.NewReader(c.Conn).ReadBytes('\n')
+			if err != nil {
+				log.Println("error of reading content")
+				c.Conn.Close()
+				return nil
+			}
+			return data
+		}
 	}
+	return nil
 }
 
 // Publish message
 func (c *Client) Publish(content interface{}) {
-	// conn, err := net.Dial("tcp", "localhost:8080")
-	// if err != nil {
-	// 	panic("error of listening")
-	// }
-	// c.Conn = conn
-
-	log.Println("hhhhhhhhhhhhhhhhhhhhhhhhhhhh >>>>>> Conn == nil: ", (c.Conn == nil))
-
 	header := new(control.PublishHeader)
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(content); err != nil {

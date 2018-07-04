@@ -141,14 +141,15 @@ func ParseConnectPacket(b []byte) (*ConnectPacket, error) {
 		log.Println(err)
 		return nil, err
 	}
-	var payload ConnectPayload
+	payload := new(ConnectPayload)
 	log.Println("length of bytes => ", len(b))
-	if err = json.Unmarshal(b[headerLen-1:], &payload); err != nil {
+	if err = json.Unmarshal(b[headerLen:], &payload); err != nil {
+		log.Println(err)
 		return nil, err
 	}
 	packet := &ConnectPacket{
 		Header:  header,
-		Payload: &payload,
+		Payload: payload,
 	}
 	return packet, nil
 }
