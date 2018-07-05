@@ -173,4 +173,16 @@ func (s *mqttServer) handleConnect(conn net.Conn, packet *control.ConnectPacket)
 func (s *mqttServer) handlePublish(conn net.Conn, packet *control.PublishPacket) {
 	log.Printf("publish pack => %v", packet)
 	log.Println("payload => ", string(packet.Payload.Content))
+	log.Println("writing publish ack...")
+	ack := new(control.PublishAckPacket)
+	ack.Header = &control.PublishAckHeader{
+		PackID: 12345,
+	}
+	packBytes, err := ack.Marshal()
+	if err != nil {
+		log.Println("error of acking publish => ", err)
+		conn.Close()
+	}
+	packBytes = append(packBytes, '\n')
+	conn.Write(packBytes)
 }

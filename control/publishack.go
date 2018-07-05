@@ -1,21 +1,23 @@
 package control
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
+	"mqtt/utils"
 )
 
 const (
-	publishAckVarHeaderLen = 2
+	publishAckFixedHeaderLen = 2
+	publishAckVarHeaderLen   = 2
 )
 
 // PublishAckHeader : publish acknowledgement header
 type PublishAckHeader struct {
-	PackType   int
-	RemainLen  int
-	Flags      int
-	ReturnCode int
+	PackType  int
+	RemainLen int
+	PackID    uint16
 }
 
 // PublishAckPacket : PublishAckPacket
@@ -24,20 +26,16 @@ type PublishAckPacket struct {
 }
 
 // Marshal : Marshal header to bytes
-func (header *PublishAckHeader) Marshal(returnCode int) ([]byte, error) {
+func (header *PublishAckHeader) Marshal() ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("publish header is nil")
 	}
-	remainLen := publishAckVarHeaderLen
-	remainLenBytes := GenRemainLenBytes(remainLen)
-	fixedHeaderLen := len(remainLenBytes) + 1
-	b := make([]byte, fixedHeaderLen+publishAckVarHeaderLen)
-	b[0] = 1 << 6
-	for i, v := range remainLenBytes {
-		b[i+1] = v
-	}
-	b[fixedHeaderLen] = 0
-	b[fixedHeaderLen+1] = byte(returnCode)
+	b := make([]byte, publishAckFixedHeaderLen+publishAckVarHeaderLen)
+	b[0] = 1<<6 | 1<<5 | 1<<4
+	b[1] = 1 << 1
+	log.Println("b => ", b)
+	binary.BigEndian.PutUint16(b[2:4], header.PackID)
+	log.Println(">>>>>>=============<<<<<<<<")
 	if err := header.Parse(b); err != nil {
 		log.Println(err)
 	}
@@ -48,25 +46,19 @@ func (header *PublishAckHeader) Marshal(returnCode int) ([]byte, error) {
 // Parse : parse connect header
 func (header *PublishAckHeader) Parse(b []byte) error {
 	header.PackType = int(b[0] >> 4)
-	remainLenDigits, err := ParseRemainLenDigits(b[1:3])
-	if err != nil {
-		return err
-	}
-	remainLen, err := DecodeRemainLen(remainLenDigits)
-	if err != nil {
-		return err
-	}
-	log.Println("remain_len_parsed => ", remainLen)
-	header.RemainLen = remainLen
-	varHeaderStartIdx := 1 + len(remainLenDigits)
-	header.Flags = int(b[varHeaderStartIdx])
-	header.ReturnCode = int(b[varHeaderStartIdx+1])
+	header.RemainLen = int(b[1] >> 1)
+	header.PackID = binary.BigEndian.Uint16(b[2:4])
 	fmt.Printf("parsed_header => %#v\n", header)
 	return nil
 }
 
-// ParsePublishectHeader : Parse connect header
-func ParsePublishectHeader(b []byte) (*PublishAckHeader, error) {
+// Marshal : marshal the publish ack packet
+func (p *PublishAckPacket) Marshal() ([]byte, error) {
+	return p.Header.Marshal()
+}
+
+// ParseHeader : Parse publish acknowledgement header
+func (p *PublishAckPacket) ParseHeader(b []byte) (*PublishAckHeader, error) {
 	h := new(PublishAckHeader)
 	if err := h.Parse(b); err != nil {
 		log.Println(err)
@@ -74,16 +66,9 @@ func ParsePublishectHeader(b []byte) (*PublishAckHeader, error) {
 	return h, nil
 }
 
-// ParsePublishAckPacket : Parse connect packet
-func ParsePublishAckPacket(b []byte) (*PublishAckPacket, error) {
-	fixedHeaderLen, err := GetFixedHeaderLen(b[1:5])
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	headerLen := fixedHeaderLen + varHeaderLen
-	log.Println("connect acknowledge header length => ", headerLen)
-	header, err := ParsePublishectHeader(b[0:headerLen])
+// Parse : Parse connect packet
+func (p *PublishAckPacket) Parse(b []byte) (*PublishAckPacket, error) {
+	header, err := p.ParseHeader(b[0 : publishAckFixedHeaderLen+publishAckVarHeaderLen])
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -91,12 +76,14 @@ func ParsePublishAckPacket(b []byte) (*PublishAckPacket, error) {
 	packet := &PublishAckPacket{
 		Header: header,
 	}
+	log.Println("publish ack packet => ", packet)
 	return packet, nil
 }
 
 func (header *PublishAckHeader) String() string {
 	if header == nil {
-		return "<nil>"
+		return utils.Nil
 	}
-	return fmt.Sprintf("remainlen=%d ", header.RemainLen)
+	return fmt.Sprintf("PackType=%d RemainLen=%d PackID=%d",
+		header.PackType, header.RemainLen, header.PackID)
 }

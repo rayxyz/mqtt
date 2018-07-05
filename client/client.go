@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"mqtt/control"
 	"mqtt/utils"
@@ -59,26 +60,39 @@ func (c *Client) Connect() {
 
 	log.Println("conn is nil after connected => ", conn == nil)
 
-	revbytes := c.receive()
-	if len(revbytes) == 0 {
-		c.Conn.Close()
-		panic("error of receiving data from server")
-	}
-	connack := new(control.ConnAckHeader)
-	connack.Parse(revbytes)
-	fmt.Printf("ack => %#v\n", connack)
-	if connack.PackType != control.CONNACK {
-		log.Println("wrong connect packet type")
-		conn.Close()
-		return
-	}
+	// connack := new(control.ConnAckHeader)
+	datach := make(chan int)
+	c.receive(datach)
+	data := <-datach
+	log.Println("parsing received data... data => ", data)
+	// connack.Parse(data)
+	// fmt.Printf("ack => %#v\n", connack)
+	// if connack.PackType != control.CONNACK {
+	// 	log.Println("wrong connect packet type")
+	// 	conn.Close()
+	// }
+	// loop:
+	// 	for {
+	// 		select {
+	// 		case data := <-datach:
+	// 			connack.Parse(data)
+	// 			fmt.Printf("ack => %#v\n", connack)
+	// 			if connack.PackType != control.CONNACK {
+	// 				log.Println("wrong connect packet type")
+	// 				conn.Close()
+	// 			}
+	// 			break loop
+	// 		default:
+	// 			break loop
+	// 		}
+	// 	}
 
 	log.Println("<<<<<<<<<<<<<<<<<< I will publish a message >>>>>>>>>>>>>>>>>>>>")
 
-	c.Publish("Hello, my friend!!!")
+	// c.Publish("Hello, my friend!!!")
 }
 
-func (c *Client) receive() []byte {
+func (c *Client) receive(ch chan int) {
 	timeout := time.After(10 * time.Second)
 loop:
 	for {
@@ -89,15 +103,18 @@ loop:
 			break loop
 		default:
 			data, err := bufio.NewReader(c.Conn).ReadBytes('\n')
-			if err != nil {
+			if err != nil && err != io.EOF {
 				log.Println("error of reading content")
 				c.Conn.Close()
-				return nil
 			}
-			return data
+			if len(data) > 0 {
+				log.Println("Before writing something to data channel.")
+				log.Println("data => ", data)
+				ch <- 1
+				log.Println("After writing something to data channel.")
+			}
 		}
 	}
-	return nil
 }
 
 // Publish message
@@ -138,4 +155,19 @@ func (c *Client) Publish(content interface{}) {
 	log.Println("n => ", n)
 
 	log.Println("After sending the publish message.")
+
+	puback := new(control.PublishAckPacket)
+	datach := make(chan []byte)
+	// c.receive(datach)
+loop:
+	for {
+		select {
+		case data := <-datach:
+			puback.Parse(data)
+			log.Println("puback => ", puback)
+			break loop
+		default:
+			break loop
+		}
+	}
 }
