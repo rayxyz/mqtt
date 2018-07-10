@@ -26,7 +26,6 @@ func main() {
 
 // Connect to the server
 func (c *Client) Connect() {
-	header := new(control.ConnectHeader)
 	payload := &control.ConnectPayload{
 		ClientID:  utils.GenUUID(),
 		WillTopic: "willtopic",
@@ -34,20 +33,15 @@ func (c *Client) Connect() {
 		UserName:  "ray",
 		Password:  "ray123",
 	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		panic("marsh payload error")
+	connpack := &control.ConnectPacket{
+		Header:  &control.ConnectHeader{},
+		Payload: payload,
 	}
-	headerBytes, err := header.Marshal(len(payloadBytes), payload)
+	packdata, err := connpack.Marshal()
 	if err != nil {
-		panic("marshal header error")
+		log.Println(err)
+		return
 	}
-	var pack []byte
-	pack = append(pack, headerBytes...)
-	pack = append(pack, payloadBytes...)
-	// pack = append(pack, '\n')
-
-	log.Println(pack)
 
 	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -55,44 +49,26 @@ func (c *Client) Connect() {
 	}
 	c.Conn = conn
 
-	// fmt.Fprintf(conn, string(pack))
-	conn.Write(pack)
+	c.Conn.Write(packdata)
 
-	log.Println("conn is nil after connected => ", conn == nil)
-
-	// connack := new(control.ConnAckHeader)
-	datach := make(chan int)
-	c.receive(datach)
-	data := <-datach
-	log.Println("parsing received data... data => ", data)
-	// connack.Parse(data)
-	// fmt.Printf("ack => %#v\n", connack)
-	// if connack.PackType != control.CONNACK {
-	// 	log.Println("wrong connect packet type")
-	// 	conn.Close()
-	// }
-	// loop:
-	// 	for {
-	// 		select {
-	// 		case data := <-datach:
-	// 			connack.Parse(data)
-	// 			fmt.Printf("ack => %#v\n", connack)
-	// 			if connack.PackType != control.CONNACK {
-	// 				log.Println("wrong connect packet type")
-	// 				conn.Close()
-	// 			}
-	// 			break loop
-	// 		default:
-	// 			break loop
-	// 		}
-	// 	}
+	connack := new(control.ConnAckPacket)
+	datach := make(chan []byte)
+	go func(datach chan []byte) {
+		c.receive(datach)
+	}(datach)
+	connack.Parse(<-datach)
+	fmt.Printf("ack => %#v\n", connack)
+	if connack.Header.PackType != control.CONNACK {
+		log.Println("wrong connect packet type")
+		conn.Close()
+	}
 
 	log.Println("<<<<<<<<<<<<<<<<<< I will publish a message >>>>>>>>>>>>>>>>>>>>")
 
-	// c.Publish("Hello, my friend!!!")
+	c.Publish("Hello, my friend!!!")
 }
 
-func (c *Client) receive(ch chan int) {
+func (c *Client) receive(ch chan []byte) {
 	timeout := time.After(10 * time.Second)
 loop:
 	for {
@@ -108,10 +84,11 @@ loop:
 				c.Conn.Close()
 			}
 			if len(data) > 0 {
-				log.Println("Before writing something to data channel.")
-				log.Println("data => ", data)
-				ch <- 1
-				log.Println("After writing something to data channel.")
+				// log.Println("Before writing something to data channel.")
+				// log.Println("data => ", data)
+				ch <- data
+				// log.Println("After writing something to data channel.")
+				break loop
 			}
 		}
 	}
@@ -119,55 +96,43 @@ loop:
 
 // Publish message
 func (c *Client) Publish(content interface{}) {
-	header := new(control.PublishHeader)
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(content); err != nil {
 		log.Println(err)
 		return
 	}
-	payload := &control.PublishPayload{
-		Content: buf.Bytes(),
+	pubpack := &control.PublishPacket{
+		Header: &control.PublishHeader{
+			PacKID: 12345,
+		},
+		Payload: buf.Bytes(),
 	}
 
-	payloadBytes, err := json.Marshal(payload)
+	pbs, err := pubpack.Marshal()
 	if err != nil {
 		log.Println(err)
-		panic("marsh payload error")
+		return
 	}
-	headerBytes, err := header.Marshal(len(payloadBytes))
-	if err != nil {
-		log.Println(err)
-		panic("marshal header error")
-	}
-
-	var pack []byte
-	pack = append(pack, headerBytes...)
-	pack = append(pack, payloadBytes...)
-	// pack = append(pack, '\n')
-
-	log.Println(pack)
-
-	// n, err := fmt.Fprintf(c.Conn, string(pack))
-	n, err := c.Conn.Write(pack)
+	_, err = c.Conn.Write(pbs)
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println("n => ", n)
-
 	log.Println("After sending the publish message.")
 
 	puback := new(control.PublishAckPacket)
 	datach := make(chan []byte)
-	// c.receive(datach)
-loop:
-	for {
-		select {
-		case data := <-datach:
-			puback.Parse(data)
-			log.Println("puback => ", puback)
-			break loop
-		default:
-			break loop
-		}
+	go func(datach chan []byte) {
+		c.receive(datach)
+	}(datach)
+	ackPack, err := puback.Parse(<-datach)
+	if err != nil {
+		log.Println("parse publish ack pack error")
+		return
 	}
+	log.Println("header.PacKID => ", pubpack.Header.PacKID, "ack.header.packid => ", ackPack.Header.PackID)
+	if ackPack.Header.PackID != pubpack.Header.PacKID {
+		log.Println("pack id does not matched")
+		return
+	}
+	log.Println("publish ack packet => ", ackPack)
 }

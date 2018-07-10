@@ -40,7 +40,7 @@ type ConnectPacket struct {
 }
 
 // Marshal : Marshal header to bytes
-func (header *ConnectHeader) Marshal(payloadLen int, payload *ConnectPayload) ([]byte, error) {
+func (header *ConnectHeader) marshal(payloadLen int, payload *ConnectPayload) ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("connect header is nil")
 	}
@@ -83,7 +83,7 @@ func (header *ConnectHeader) Marshal(payloadLen int, payload *ConnectPayload) ([
 	b[fixedHeaderLen+7] &^= 1 << 0      // Clear reserved field
 	b[fixedHeaderLen+8] = 0             // Keep Alive MSB
 	b[fixedHeaderLen+9] = (1<<3 | 1<<1) // Keep Alive LSB
-	if err := header.Parse(b); err != nil {
+	if err := header.parse(b); err != nil {
 		log.Println(err)
 	}
 	fmt.Println("header.String() : \n", header.String())
@@ -91,7 +91,7 @@ func (header *ConnectHeader) Marshal(payloadLen int, payload *ConnectPayload) ([
 }
 
 // Parse : parse connect header
-func (header *ConnectHeader) Parse(b []byte) error {
+func (header *ConnectHeader) parse(b []byte) error {
 	header.PackType = int(b[0] >> 4)
 	remainLenDigits, err := ParseRemainLenDigits(b[1:5])
 	if err != nil {
@@ -118,40 +118,46 @@ func (header *ConnectHeader) Parse(b []byte) error {
 	return nil
 }
 
-// ParseConnectHeader : Parse connect header
-func ParseConnectHeader(b []byte) (*ConnectHeader, error) {
-	h := new(ConnectHeader)
-	if err := h.Parse(b); err != nil {
-		log.Println(err)
+// Marshal : marshal connect packet
+func (p *ConnectPacket) Marshal() ([]byte, error) {
+	var pbs []byte
+	payloadBytes, err := json.Marshal(p.Payload)
+	if err != nil {
+		return nil, err
 	}
-	return h, nil
+	headerBytes, err := p.Header.marshal(len(payloadBytes), p.Payload)
+	if err != nil {
+		return nil, err
+	}
+	pbs = append(pbs, headerBytes...)
+	pbs = append(pbs, payloadBytes...)
+
+	return pbs, nil
 }
 
-// ParseConnectPacket : Parse connect packet
-func ParseConnectPacket(b []byte) (*ConnectPacket, error) {
+// Parse : Parse connect packet
+func (p *ConnectPacket) Parse(b []byte) error {
 	fixedHeaderLen, err := GetFixedHeaderLen(b[1:5])
 	if err != nil {
-		log.Println(err)
-		return nil, err
+		return err
 	}
 	headerLen := fixedHeaderLen + VarHeaderLen
 	log.Println("connect header length => ", headerLen)
-	header, err := ParseConnectHeader(b[0:headerLen])
-	if err != nil {
-		log.Println(err)
-		return nil, err
+
+	header := new(ConnectHeader)
+	if err = header.parse(b); err != nil {
+		return err
 	}
+	p.Header = header
+
 	payload := new(ConnectPayload)
 	log.Println("length of bytes => ", len(b))
 	if err = json.Unmarshal(b[headerLen:], &payload); err != nil {
-		log.Println(err)
-		return nil, err
+		return err
 	}
-	packet := &ConnectPacket{
-		Header:  header,
-		Payload: payload,
-	}
-	return packet, nil
+	p.Payload = payload
+
+	return nil
 }
 
 func (header *ConnectHeader) String() string {

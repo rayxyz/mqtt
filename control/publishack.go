@@ -26,7 +26,7 @@ type PublishAckPacket struct {
 }
 
 // Marshal : Marshal header to bytes
-func (header *PublishAckHeader) Marshal() ([]byte, error) {
+func (header *PublishAckHeader) marshal() ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("publish header is nil")
 	}
@@ -36,7 +36,7 @@ func (header *PublishAckHeader) Marshal() ([]byte, error) {
 	log.Println("b => ", b)
 	binary.BigEndian.PutUint16(b[2:4], header.PackID)
 	log.Println(">>>>>>=============<<<<<<<<")
-	if err := header.Parse(b); err != nil {
+	if err := header.parse(b); err != nil {
 		log.Println(err)
 	}
 	fmt.Println("header.String() : \n", header.String())
@@ -44,7 +44,7 @@ func (header *PublishAckHeader) Marshal() ([]byte, error) {
 }
 
 // Parse : parse connect header
-func (header *PublishAckHeader) Parse(b []byte) error {
+func (header *PublishAckHeader) parse(b []byte) error {
 	header.PackType = int(b[0] >> 4)
 	header.RemainLen = int(b[1] >> 1)
 	header.PackID = binary.BigEndian.Uint16(b[2:4])
@@ -54,13 +54,13 @@ func (header *PublishAckHeader) Parse(b []byte) error {
 
 // Marshal : marshal the publish ack packet
 func (p *PublishAckPacket) Marshal() ([]byte, error) {
-	return p.Header.Marshal()
+	return p.Header.marshal()
 }
 
 // ParseHeader : Parse publish acknowledgement header
 func (p *PublishAckPacket) ParseHeader(b []byte) (*PublishAckHeader, error) {
 	h := new(PublishAckHeader)
-	if err := h.Parse(b); err != nil {
+	if err := h.parse(b); err != nil {
 		log.Println(err)
 	}
 	return h, nil
@@ -76,7 +76,6 @@ func (p *PublishAckPacket) Parse(b []byte) (*PublishAckPacket, error) {
 	packet := &PublishAckPacket{
 		Header: header,
 	}
-	log.Println("publish ack packet => ", packet)
 	return packet, nil
 }
 

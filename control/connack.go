@@ -20,11 +20,11 @@ type ConnAckHeader struct {
 
 // ConnAckPacket : ConnAckPacket
 type ConnAckPacket struct {
-	Header *ConnectHeader
+	Header *ConnAckHeader
 }
 
-// Marshal : Marshal header to bytes
-func (header *ConnAckHeader) Marshal(returnCode int) ([]byte, error) {
+// marshal header to bytes
+func (header *ConnAckHeader) marshal() ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("connect header is nil")
 	}
@@ -40,16 +40,12 @@ func (header *ConnAckHeader) Marshal(returnCode int) ([]byte, error) {
 		b[i+1] = v
 	}
 	b[fixedHeaderLen] = 0
-	b[fixedHeaderLen+1] = byte(returnCode)
-	if err := header.Parse(b); err != nil {
-		log.Println(err)
-	}
-	fmt.Println("header.String() : \n", header.String())
+	b[fixedHeaderLen+1] = byte(header.ReturnCode)
 	return b, nil
 }
 
-// Parse : parse connect header
-func (header *ConnAckHeader) Parse(b []byte) error {
+// parse connect ack header
+func (header *ConnAckHeader) parse(b []byte) error {
 	header.PackType = int(b[0] >> 4)
 	remainLenDigits, err := ParseRemainLenDigits(b[1:3])
 	if err != nil {
@@ -68,33 +64,33 @@ func (header *ConnAckHeader) Parse(b []byte) error {
 	return nil
 }
 
-// ParseConnAckHeader : Parse connect header
-func ParseConnAckHeader(b []byte) (*ConnectHeader, error) {
-	h := new(ConnectHeader)
-	if err := h.Parse(b); err != nil {
-		log.Println(err)
+// Marshal : marshal the connect ack packet
+func (p *ConnAckPacket) Marshal() ([]byte, error) {
+	var cpbs []byte
+	headerBytes, err := p.Header.marshal()
+	if err != nil {
+		return nil, err
 	}
-	return h, nil
+	cpbs = append(cpbs, headerBytes...)
+	return cpbs, nil
 }
 
-// ParseConnAckPacket : Parse connect packet
-func ParseConnAckPacket(b []byte) (*ConnAckPacket, error) {
+// Parse : Parse connect packet
+func (p *ConnAckPacket) Parse(b []byte) error {
 	fixedHeaderLen, err := GetFixedHeaderLen(b[1:5])
 	if err != nil {
-		log.Println(err)
-		return nil, err
+		return err
 	}
 	headerLen := fixedHeaderLen + varHeaderLen
 	log.Println("connect acknowledge header length => ", headerLen)
-	header, err := ParseConnectHeader(b[0:headerLen])
-	if err != nil {
+
+	header := new(ConnAckHeader)
+	if err := header.parse(b[0:headerLen]); err != nil {
 		log.Println(err)
-		return nil, err
 	}
-	packet := &ConnAckPacket{
-		Header: header,
-	}
-	return packet, nil
+	p.Header = header
+
+	return nil
 }
 
 func (header *ConnAckHeader) String() string {

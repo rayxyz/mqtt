@@ -46,7 +46,6 @@ func handleConn(conn net.Conn) {
 
 	go func(ch chan []byte, ech chan error) {
 		tmp := make([]byte, 1024)
-
 		counter := 0
 		for {
 			n, err := conn.Read(tmp)
@@ -105,20 +104,10 @@ func (s *mqttServer) handlePacket(conn net.Conn, b []byte) {
 
 	switch cpt {
 	case control.CONNECT:
-		packet, err := control.ParseConnectPacket(b)
-		if err != nil {
-			return
-		}
-		fmt.Println("<<<Connect>>> client_id => ", packet.Payload.ClientID)
-		s.handleConnect(conn, packet)
+		s.handleConnect(conn, b)
 	case control.PUBLISH:
 		fmt.Println("<<<Publish>>>")
-		packet, err := control.ParsePublishPacket(b)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		s.handlePublish(conn, packet)
+		s.handlePublish(conn, b)
 	case control.SUBSCRIBE:
 		fmt.Println("<<<Subscribe>>>")
 	case control.UNSUBSCRIBE:
@@ -134,45 +123,86 @@ func (s *mqttServer) handlePacket(conn net.Conn, b []byte) {
 	}
 }
 
-func (s *mqttServer) handleConnect(conn net.Conn, packet *control.ConnectPacket) {
-	log.Println("protocol name => ", packet.Header.ProtocName)
-	ackHeader := new(control.ConnAckHeader)
-	if !strings.EqualFold(packet.Header.ProtocName, utils.ProtocName) {
-		headerBytes, _ := ackHeader.Marshal(1)
-		headerBytes = append(headerBytes, '\n')
-		conn.Write(headerBytes)
+func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
+	connpack := new(control.ConnectPacket)
+	if err := connpack.Parse(data); err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println("protocol name => ", connpack.Header.ProtocName)
+	ackpack := new(control.ConnAckPacket)
+	if !strings.EqualFold(connpack.Header.ProtocName, utils.ProtocName) {
+		ackpack.Header = &control.ConnAckHeader{
+			ReturnCode: 1,
+		}
+		ackpackData, err := ackpack.Marshal()
+		if err != nil {
+			log.Println(err)
+			conn.Close()
+			return
+		}
+		packdata := append(ackpackData, '\n')
+		conn.Write(packdata)
 		conn.Close()
 		return
 	}
-	if !strings.EqualFold(packet.Payload.ClientID, utils.Blank) {
-		if !strings.EqualFold(store.ClientIDMap[packet.Payload.ClientID], utils.Blank) {
-			headerBytes, _ := ackHeader.Marshal(2)
-			headerBytes = append(headerBytes, '\n')
-			conn.Write(headerBytes)
+	if !strings.EqualFold(connpack.Payload.ClientID, utils.Blank) {
+		if !strings.EqualFold(store.ClientIDMap[connpack.Payload.ClientID], utils.Blank) {
+			ackpack.Header = &control.ConnAckHeader{
+				ReturnCode: 2,
+			}
+			ackpackData, err := ackpack.Marshal()
+			if err != nil {
+				log.Println(err)
+				conn.Close()
+				return
+			}
+			packdata := append(ackpackData, '\n')
+			conn.Write(packdata)
 			conn.Close()
-			delete(store.ClientIDMap, packet.Payload.ClientID)
-			log.Println("disconnected client => ", packet.Payload.ClientID)
+			delete(store.ClientIDMap, connpack.Payload.ClientID)
+			log.Println("disconnected client => ", connpack.Payload.ClientID)
 			return
 		}
 	} else {
 		// clean session not set
-		if packet.Header.Flags&(1<<1) == 0 {
-			headerBytes, _ := ackHeader.Marshal(2)
-			headerBytes = append(headerBytes, '\n')
-			conn.Write(headerBytes)
+		if connpack.Header.Flags&(1<<1) == 0 {
+			ackpack.Header = &control.ConnAckHeader{
+				ReturnCode: 2,
+			}
+			ackpackData, err := ackpack.Marshal()
+			if err != nil {
+				log.Println(err)
+				conn.Close()
+				return
+			}
+			packdata := append(ackpackData, '\n')
+			conn.Write(packdata)
 			conn.Close()
 			return
 		}
 	}
-	store.ClientIDMap[packet.Payload.ClientID] = packet.Payload.ClientID
-	ackHeaderBytes, _ := ackHeader.Marshal(0)
-	ackHeaderBytes = append(ackHeaderBytes, '\n')
-	conn.Write(ackHeaderBytes)
+	store.ClientIDMap[connpack.Payload.ClientID] = connpack.Payload.ClientID
+	ackpack.Header = &control.ConnAckHeader{
+		ReturnCode: 0,
+	}
+	ackpackData, err := ackpack.Marshal()
+	if err != nil {
+		log.Println(err)
+		conn.Close()
+		return
+	}
+	packdata := append(ackpackData, '\n')
+	conn.Write(packdata)
 }
 
-func (s *mqttServer) handlePublish(conn net.Conn, packet *control.PublishPacket) {
-	log.Printf("publish pack => %v", packet)
-	log.Println("payload => ", string(packet.Payload.Content))
+func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
+	pubpack := new(control.PublishPacket)
+	if err := pubpack.Parse(data); err != nil {
+		log.Println("parse publish packet err => ", err)
+	}
+	log.Printf("publish pack => %v", pubpack)
+	log.Println("payload => ", string(pubpack.Payload))
 	log.Println("writing publish ack...")
 	ack := new(control.PublishAckPacket)
 	ack.Header = &control.PublishAckHeader{

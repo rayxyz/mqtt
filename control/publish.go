@@ -20,22 +20,17 @@ type PublishHeader struct {
 	RemainLen int
 
 	TopicName []byte
-	PacKID    int
-}
-
-// PublishPayload : Publish payload
-type PublishPayload struct {
-	Content []byte
+	PacKID    uint16
 }
 
 // PublishPacket : publish message packet
 type PublishPacket struct {
 	Header  *PublishHeader
-	Payload *PublishPayload
+	Payload []byte
 }
 
 // Marshal :
-func (header *PublishHeader) Marshal(payloadLen int) ([]byte, error) {
+func (header *PublishHeader) marshal(payloadLen int) ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("publish header is nil")
 	}
@@ -63,7 +58,7 @@ func (header *PublishHeader) Marshal(payloadLen int) ([]byte, error) {
 		b[i+1] = v
 	}
 
-	if err := header.Parse(b); err != nil {
+	if err := header.parse(b); err != nil {
 		log.Println(err)
 	}
 	fmt.Println("header.String() : \n", header.String())
@@ -71,8 +66,8 @@ func (header *PublishHeader) Marshal(payloadLen int) ([]byte, error) {
 	return b, nil
 }
 
-// Parse :
-func (header *PublishHeader) Parse(b []byte) error {
+// Parse : parse the publish packet
+func (header *PublishHeader) parse(b []byte) error {
 	header.PackType = int(b[0] >> 4)
 	remainLenDigits, err := ParseRemainLenDigits(b[1:5])
 	if err != nil {
@@ -87,44 +82,52 @@ func (header *PublishHeader) Parse(b []byte) error {
 	return nil
 }
 
-// ParsePublishHeader : Parse pubish header
-func ParsePublishHeader(b []byte) (*PublishHeader, error) {
-	h := new(PublishHeader)
-	if err := h.Parse(b); err != nil {
-		log.Println(err)
+// Marshal : marsal publish packet
+func (p *PublishPacket) Marshal() ([]byte, error) {
+	var pbs []byte
+	headerBytes, err := p.Header.marshal(len(p.Payload))
+	if err != nil {
+		return nil, err
 	}
-	return h, nil
+	pbs = append(pbs, headerBytes...)
+
+	payloadBytes, err := json.Marshal(p.Payload)
+	if err != nil {
+		return nil, err
+	}
+	pbs = append(pbs, payloadBytes...)
+
+	return pbs, nil
 }
 
-// ParsePublishPacket : Parse publish packet
-func ParsePublishPacket(b []byte) (*PublishPacket, error) {
+// Parse : Parse publish packet
+func (p *PublishPacket) Parse(b []byte) error {
 	fixedHeaderLen, err := GetFixedHeaderLen(b[1:5])
 	if err != nil {
-		log.Println("ParsePublishPacket => ", err)
-		return nil, err
+		return err
 	}
 	headerLen := fixedHeaderLen + publishVarHeaderLen
 	log.Println("publish header length => ", headerLen)
-	header, err := ParsePublishHeader(b[0:headerLen])
-	if err != nil {
-		log.Println(err)
-		return nil, err
+
+	header := new(PublishHeader)
+	if err = header.parse(b); err != nil {
+		return err
 	}
-	payload := new(PublishPayload)
+	p.Header = header
+
+	var payload []byte
 	log.Println("length of bytes => ", len(b))
-	if err = json.Unmarshal(b[headerLen:], payload); err != nil {
-		return nil, err
+	if err = json.Unmarshal(b[headerLen:], &payload); err != nil {
+		return err
 	}
-	packet := &PublishPacket{
-		Header:  header,
-		Payload: payload,
-	}
-	return packet, nil
+	p.Payload = payload
+
+	return nil
 }
 
 func (header *PublishHeader) String() string {
 	if header == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("remainlen=%d ", header.RemainLen)
+	return fmt.Sprintf("PackType=%d RemainLen=%d PackID=%d", header.PackType, header.RemainLen, header.PacKID)
 }
