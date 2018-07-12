@@ -5,7 +5,8 @@ import (
 	"io"
 	"log"
 	"mqtt/control"
-	"mqtt/store"
+	"mqtt/message"
+	"mqtt/server/store"
 	"mqtt/utils"
 	"net"
 	"strings"
@@ -33,7 +34,7 @@ func main() {
 
 func init() {
 	fmt.Println("I am fucking init....")
-	store.ClientIDMap = make(map[string]string, 10)
+	store.ServerSessionMap = make(map[string]*store.ServerSession, 10)
 }
 
 func handleConn(conn net.Conn) {
@@ -147,7 +148,8 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 		return
 	}
 	if !strings.EqualFold(connpack.Payload.ClientID, utils.Blank) {
-		if !strings.EqualFold(store.ClientIDMap[connpack.Payload.ClientID], utils.Blank) {
+		_, ok := store.ServerSessionMap[connpack.Payload.ClientID]
+		if ok {
 			ackpack.Header = &control.ConnAckHeader{
 				ReturnCode: 2,
 			}
@@ -160,7 +162,7 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 			packdata := append(ackpackData, '\n')
 			conn.Write(packdata)
 			conn.Close()
-			delete(store.ClientIDMap, connpack.Payload.ClientID)
+			delete(store.ServerSessionMap, connpack.Payload.ClientID)
 			log.Println("disconnected client => ", connpack.Payload.ClientID)
 			return
 		}
@@ -182,7 +184,11 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 			return
 		}
 	}
-	store.ClientIDMap[connpack.Payload.ClientID] = connpack.Payload.ClientID
+	store.ServerSessionMap[connpack.Payload.ClientID] = &store.ServerSession{
+		ClientID:        connpack.Payload.ClientID,
+		Connection:      conn,
+		ConnectReceived: true,
+	}
 	ackpack.Header = &control.ConnAckHeader{
 		ReturnCode: 0,
 	}
@@ -208,11 +214,38 @@ func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
 	ack.Header = &control.PublishAckHeader{
 		PackID: 12345,
 	}
-	packBytes, err := ack.Marshal()
+	ackpackData, err := ack.Marshal()
 	if err != nil {
 		log.Println("error of acking publish => ", err)
 		conn.Close()
 	}
-	packBytes = append(packBytes, '\n')
-	conn.Write(packBytes)
+	ackpackData = append(ackpackData, '\n')
+	conn.Write(ackpackData)
+
+	message.PutMessage(&message.Message{
+		TopicName: "dxxx",
+		Data:      pubpack.Payload,
+	})
+
+	message.NewSub(&message.Sub{
+		ClientID:    "xxxxxkkkkkk",
+		TopicFilter: "dxxx",
+	})
+
+	////
+	server.distrMessages()
+}
+
+// distribute messages to the clients
+func (s *mqttServer) distrMessages() {
+	subs := message.GetSubs()
+	log.Println("subs => ", subs)
+	for _, v := range subs {
+		client, ok := store.ServerSessionMap[v.ClientID]
+		if ok {
+			if client.Connection != nil {
+				client.Connection.Write([]byte("Hello Client! client_id => " + v.ClientID))
+			}
+		}
+	}
 }
