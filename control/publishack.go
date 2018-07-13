@@ -31,7 +31,7 @@ func (header *PublishAckHeader) marshal() ([]byte, error) {
 		return nil, errors.New("publish header is nil")
 	}
 	b := make([]byte, publishAckFixedHeaderLen+publishAckVarHeaderLen)
-	b[0] = 1<<6 | 1<<5 | 1<<4
+	b[0] = 1 << 6
 	b[1] = 1 << 1
 	log.Println("b => ", b)
 	binary.BigEndian.PutUint16(b[2:4], header.PackID)

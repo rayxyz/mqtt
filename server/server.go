@@ -34,7 +34,7 @@ func main() {
 
 func init() {
 	fmt.Println("I am fucking init....")
-	store.ServerSessionMap = make(map[string]*store.ServerSession, 10)
+	store.SessionMap = make(map[string]*store.Session, 10)
 }
 
 func handleConn(conn net.Conn) {
@@ -148,7 +148,7 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 		return
 	}
 	if !strings.EqualFold(connpack.Payload.ClientID, utils.Blank) {
-		_, ok := store.ServerSessionMap[connpack.Payload.ClientID]
+		_, ok := store.SessionMap[connpack.Payload.ClientID]
 		if ok {
 			ackpack.Header = &control.ConnAckHeader{
 				ReturnCode: 2,
@@ -162,7 +162,7 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 			packdata := append(ackpackData, '\n')
 			conn.Write(packdata)
 			conn.Close()
-			delete(store.ServerSessionMap, connpack.Payload.ClientID)
+			delete(store.SessionMap, connpack.Payload.ClientID)
 			log.Println("disconnected client => ", connpack.Payload.ClientID)
 			return
 		}
@@ -184,7 +184,7 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 			return
 		}
 	}
-	store.ServerSessionMap[connpack.Payload.ClientID] = &store.ServerSession{
+	store.SessionMap[connpack.Payload.ClientID] = &store.Session{
 		ClientID:        connpack.Payload.ClientID,
 		Connection:      conn,
 		ConnectReceived: true,
@@ -240,12 +240,24 @@ func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
 func (s *mqttServer) distrMessages() {
 	subs := message.GetSubs()
 	log.Println("subs => ", subs)
-	for _, v := range subs {
-		client, ok := store.ServerSessionMap[v.ClientID]
-		if ok {
-			if client.Connection != nil {
-				client.Connection.Write([]byte("Hello Client! client_id => " + v.ClientID))
-			}
+	// for _, v := range subs {
+	// 	log.Println("client_id => ", v.ClientID)
+	// 	client, ok := store.SessionMap[v.ClientID]
+	// 	if ok {
+	// 		if client.Connection != nil {
+	// 			client.Connection.Write([]byte("Hello Client! client_id => " + v.ClientID))
+	// 		}
+	// 	}
+	// }
+	for _, v := range store.SessionMap {
+		if v.Connection != nil {
+			log.Println("Writing message to client...")
+			var buf []byte
+			buf = append(buf, []byte("Hello Client! client_id => "+v.ClientID)...)
+			buf = append(buf, '\n')
+			log.Println("data to response => ", buf)
+			v.Connection.Write(buf)
+			log.Println("write message done.")
 		}
 	}
 }

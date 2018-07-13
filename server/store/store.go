@@ -5,12 +5,12 @@ import (
 )
 
 var (
-	// ServerSessionMap : server sessions map to store server sessions
-	ServerSessionMap map[string]*ServerSession
+	// SessionMap : server sessions map to store server sessions
+	SessionMap map[string]*Session
 )
 
-// ServerSession : session storged in server
-type ServerSession struct {
+// Session : session storged in server
+type Session struct {
 	ID                  string
 	ClientID            string
 	Type                int
