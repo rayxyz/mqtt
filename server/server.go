@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -98,17 +100,20 @@ func handleConn(conn net.Conn) {
 }
 
 // handlePacket : Read MQTT packet from stream and handle it
-func (s *mqttServer) handlePacket(conn net.Conn, b []byte) {
-	cpt := b[0] >> 4
+func (s *mqttServer) handlePacket(conn net.Conn, data []byte) {
+	cpt := data[0] >> 4
 
 	log.Println("|||||||||||||||||||||||||||||| >>>>>>>>> cpt => ", cpt)
 
 	switch cpt {
 	case control.CONNECT:
-		s.handleConnect(conn, b)
+		s.handleConnect(conn, data)
 	case control.PUBLISH:
 		fmt.Println("<<<Publish>>>")
-		s.handlePublish(conn, b)
+		s.handlePublish(conn, data)
+	case control.PUBACK:
+		fmt.Println("<<<PubAck>>>")
+		s.handlePublishAck(data)
 	case control.SUBSCRIBE:
 		fmt.Println("<<<Subscribe>>>")
 	case control.UNSUBSCRIBE:
@@ -186,7 +191,7 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 	}
 	store.SessionMap[connpack.Payload.ClientID] = &store.Session{
 		ClientID:        connpack.Payload.ClientID,
-		Connection:      conn,
+		Conn:            conn,
 		ConnectReceived: true,
 	}
 	ackpack.Header = &control.ConnAckHeader{
@@ -233,11 +238,15 @@ func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
 	})
 
 	////
-	server.distrMessages()
+	server.Publish()
+}
+
+func (s *mqttServer) handlePublishAck(packet []byte) {
+	log.Println("handling publish ack...")
 }
 
 // distribute messages to the clients
-func (s *mqttServer) distrMessages() {
+func (s *mqttServer) Publish() {
 	subs := message.GetSubs()
 	log.Println("subs => ", subs)
 	// for _, v := range subs {
@@ -250,14 +259,39 @@ func (s *mqttServer) distrMessages() {
 	// 	}
 	// }
 	for _, v := range store.SessionMap {
-		if v.Connection != nil {
-			log.Println("Writing message to client...")
-			var buf []byte
-			buf = append(buf, []byte("Hello Client! client_id => "+v.ClientID)...)
-			buf = append(buf, '\n')
-			log.Println("data to response => ", buf)
-			v.Connection.Write(buf)
-			log.Println("write message done.")
+		if v.Conn != nil {
+			go func(session *store.Session) {
+				content := "Hello Client! client_id => " + session.ClientID
+				var buf bytes.Buffer
+				if err := json.NewEncoder(&buf).Encode(content); err != nil {
+					log.Println(err)
+					return
+				}
+				pubpack := &control.PublishPacket{
+					Header: &control.PublishHeader{
+						PacKID: 12345,
+					},
+					Payload: buf.Bytes(),
+				}
+
+				pbs, err := pubpack.Marshal()
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				pbs = append(pbs, '\n')
+
+				log.Println("Writing message to client...")
+				log.Println("data to response => ", pubpack)
+				log.Println("write message done.")
+
+				_, err = session.Conn.Write(pbs)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				log.Println("After sending the publish message.")
+			}(v)
 		}
 	}
 }

@@ -47,29 +47,41 @@ func main() {
 
 }
 
+func (c *Client) receive() {
+	for {
+		data, err := bufio.NewReader(c.Conn).ReadBytes('\n')
+		if err != nil && err != io.EOF {
+			log.Println("error of reading content")
+			c.Conn.Close()
+		}
+		if len(data) > 0 {
+			log.Println("Before writing something to data channel.")
+			c.Datach <- data
+			log.Println("After writing something to data channel.")
+		}
+	}
+}
+
 // handle the packet from server
-func (c *Client) handlePacket(packet []byte) {
-	cpt := packet[0] >> 4
+func (c *Client) handlePacket(data []byte) {
+	cpt := data[0] >> 4
 
 	log.Println("|||||||||||||||||||||||||||||| >>>>>>>>> cpt => ", cpt)
 
 	switch cpt {
 	case control.CONNACK:
-		c.handleConnAck(packet)
+		log.Println("ConnAck")
+		c.handleConnAck(data)
+	case control.PUBLISH:
+		log.Println("<<Publish>>")
+		c.handlePublish(data)
 	case control.PUBACK:
-		c.handlePublishAck(packet)
+		log.Println("PubAck")
+		c.handlePublishAck(data)
 	default:
 		log.Println("no MQTT controll packet type matched")
 		return
 	}
-}
-
-func (c *Client) handleConnAck(data []byte) {
-	log.Println("handling conn ack...")
-}
-
-func (c *Client) handlePublishAck(packet []byte) {
-	log.Println("handling publish ack...")
 }
 
 // Connect to the server
@@ -100,33 +112,47 @@ func (c *Client) Connect(ch chan int) {
 	ch <- 1
 
 	c.Conn.Write(packdata)
-
-	// connack := new(control.ConnAckPacket)
-	// // datach := make(chan []byte)
-	// // go func(datach chan []byte) {
-	// // 	c.receive(datach)
-	// // }(datach)
-	// connack.Parse(<-c.Datach)
-	// fmt.Printf("ack => %#v\n", connack)
-	// if connack.Header.PackType != control.CONNACK {
-	// 	log.Println("wrong connect packet type")
-	// 	conn.Close()
-	// }
 }
 
-func (c *Client) receive() {
-	for {
-		data, err := bufio.NewReader(c.Conn).ReadBytes('\n')
-		if err != nil && err != io.EOF {
-			log.Println("error of reading content")
-			c.Conn.Close()
-		}
-		if len(data) > 0 {
-			log.Println("Before writing something to data channel.")
-			c.Datach <- data
-			log.Println("After writing something to data channel.")
-		}
+func (c *Client) handleConnAck(data []byte) {
+	log.Println("handling conn ack...")
+}
+
+func (c *Client) handlePublish(data []byte) {
+	pubpack := new(control.PublishPacket)
+	if err := pubpack.Parse(data); err != nil {
+		log.Println("parse publish packet err => ", err)
 	}
+	log.Printf("publish pack from server => %v", pubpack)
+	log.Println("payload of the publish packet from server => ", string(pubpack.Payload))
+	log.Println("writing publish ack to server...")
+	// ack := new(control.PublishAckPacket)
+	// ack.Header = &control.PublishAckHeader{
+	// 	PackID: pubpack.Header.PacKID,
+	// }
+	// ackpackData, err := ack.Marshal()
+	// if err != nil {
+	// 	log.Println("error of acking publish => ", err)
+	// 	c.Conn.Close()
+	// }
+	// ackpackData = append(ackpackData, '\n')
+	// c.Conn.Write(ackpackData)
+}
+
+func (c *Client) handlePublishAck(data []byte) {
+	log.Println("handling publish ack...")
+	puback := new(control.PublishAckPacket)
+	ackPack, err := puback.Parse(data)
+	if err != nil {
+		log.Println("parse publish ack pack error")
+		return
+	}
+	log.Println("header.PacKID => ", ackPack.Header.PackID, "ack.header.packid => ", ackPack.Header.PackID)
+	// if ackPack.Header.PackID != pubpack.Header.PacKID {
+	// 	log.Println("pack id does not matched")
+	// 	return
+	// }
+	log.Println("publish ack packet => ", ackPack)
 }
 
 // Publish message
@@ -153,21 +179,4 @@ func (c *Client) Publish(content interface{}) {
 		log.Println(err)
 	}
 	log.Println("After sending the publish message.")
-
-	// puback := new(control.PublishAckPacket)
-	// // datach := make(chan []byte)
-	// // go func(datach chan []byte) {
-	// // 	c.receive(datach)
-	// // }(datach)
-	// ackPack, err := puback.Parse(<-c.Datach)
-	// if err != nil {
-	// 	log.Println("parse publish ack pack error")
-	// 	return
-	// }
-	// log.Println("header.PacKID => ", pubpack.Header.PacKID, "ack.header.packid => ", ackPack.Header.PackID)
-	// if ackPack.Header.PackID != pubpack.Header.PacKID {
-	// 	log.Println("pack id does not matched")
-	// 	return
-	// }
-	// log.Println("publish ack packet => ", ackPack)
 }

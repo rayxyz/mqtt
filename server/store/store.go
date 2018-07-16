@@ -28,5 +28,5 @@ type Session struct {
 	PingReqReceived     bool
 	PingRespSent        bool
 	DisconnectReceived  bool
-	Connection          net.Conn
+	Conn                net.Conn
 }
