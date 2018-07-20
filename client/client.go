@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"bufio"
@@ -18,33 +18,27 @@ type Client struct {
 	Conn   net.Conn
 }
 
-func main() {
-	fmt.Println("connecting to the MQTT server")
-	client := &Client{}
+// Run the client
+func (c *Client) Run(url string) {
+	fmt.Println("Running MQTT client...")
+	// client := &Client{}
 	ch := make(chan int)
-	go client.Connect(ch)
+	go c.Connect(ch, url)
 	<-ch
 	// The goroutines block on sending to the unbuffered channel.
 	// A minimal change unblocks the goroutines is to create
 	// a buffered channel with capacity
-	client.Datach = make(chan []byte, 1)
-	go client.receive()
-	i := 0
+	c.Datach = make(chan []byte, 1)
+	go c.receive()
 	for {
 		select {
-		case data := <-client.Datach:
+		case data := <-c.Datach:
 			log.Println("data >>>>>> received => ", data)
-			if i == 0 {
-				client.Publish("Hello, my friend!!!")
-				// time.Sleep(2 * time.Second)
-				i++
-			}
-			client.handlePacket(data)
+			go c.handlePacket(data)
 		default:
 			// do nothing here
 		}
 	}
-
 }
 
 func (c *Client) receive() {
@@ -55,9 +49,7 @@ func (c *Client) receive() {
 			c.Conn.Close()
 		}
 		if len(data) > 0 {
-			log.Println("Before writing something to data channel.")
 			c.Datach <- data
-			log.Println("After writing something to data channel.")
 		}
 	}
 }
@@ -70,13 +62,13 @@ func (c *Client) handlePacket(data []byte) {
 
 	switch cpt {
 	case control.CONNACK:
-		log.Println("ConnAck")
+		log.Println("<<ConnAck>>")
 		c.handleConnAck(data)
 	case control.PUBLISH:
 		log.Println("<<Publish>>")
 		c.handlePublish(data)
 	case control.PUBACK:
-		log.Println("PubAck")
+		log.Println("<<PubAck>>")
 		c.handlePublishAck(data)
 	default:
 		log.Println("no MQTT controll packet type matched")
@@ -85,7 +77,7 @@ func (c *Client) handlePacket(data []byte) {
 }
 
 // Connect to the server
-func (c *Client) Connect(ch chan int) {
+func (c *Client) Connect(ch chan int, addr string) {
 	payload := &control.ConnectPayload{
 		ClientID:  utils.GenUUID(),
 		WillTopic: "willtopic",
@@ -103,7 +95,7 @@ func (c *Client) Connect(ch chan int) {
 		return
 	}
 
-	conn, err := net.Dial("tcp", "localhost:8080")
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		panic("error of listening")
 	}
@@ -179,4 +171,10 @@ func (c *Client) Publish(content interface{}) {
 		log.Println(err)
 	}
 	log.Println("After sending the publish message.")
+}
+
+// Subscribe topics
+func (c *Client) Subscribe() {
+	log.Println("subscribing...")
+	log.Println("")
 }

@@ -42,11 +42,6 @@ func init() {
 func handleConn(conn net.Conn) {
 	ch := make(chan []byte)
 	ech := make(chan error)
-	//
-	// buf := make([]byte, 0, 4096)
-	// packLenAlereadyParsed := false
-	// packLen := 0
-
 	go func(ch chan []byte, ech chan error) {
 		tmp := make([]byte, 1024)
 		counter := 0
@@ -71,26 +66,6 @@ func handleConn(conn net.Conn) {
 		select {
 		case data := <-ch:
 			log.Println("data => ", data)
-			// if !packLenAlereadyParsed {
-			// 	packLenParsed, err := control.GetPackLen(data[1:5])
-			// 	if err != nil {
-			// 		log.Println(err)
-			// 	}
-			// 	log.Println("pack_len => ", packLenParsed)
-			// 	// packLen = packLenParsed
-			// 	packLenAlereadyParsed = true
-			// }
-			// buf = append(buf, data[:len(data)]...)
-			// if len(buf) >= packLen {
-			// 	server.handlePacket(conn, buf)
-			// 	buf = append(buf[:0])
-			// }
-			//
-			// packLenParsed, err := control.GetPackLen(data[1:5])
-			// if err != nil {
-			// 	log.Println(err)
-			// }
-			// log.Println("pack_len => ", packLenParsed)
 			server.handlePacket(conn, data)
 		case err := <-ech:
 			log.Println(err)
@@ -116,6 +91,7 @@ func (s *mqttServer) handlePacket(conn net.Conn, data []byte) {
 		s.handlePublishAck(data)
 	case control.SUBSCRIBE:
 		fmt.Println("<<<Subscribe>>>")
+		s.handleSubscribe(conn, data)
 	case control.UNSUBSCRIBE:
 		fmt.Println("<<<Unsubscribe>>>")
 	case control.PINGREQ:
@@ -238,7 +214,7 @@ func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
 	})
 
 	////
-	server.Publish()
+	server.publish()
 }
 
 func (s *mqttServer) handlePublishAck(packet []byte) {
@@ -246,7 +222,7 @@ func (s *mqttServer) handlePublishAck(packet []byte) {
 }
 
 // distribute messages to the clients
-func (s *mqttServer) Publish() {
+func (s *mqttServer) publish() {
 	subs := message.GetSubs()
 	log.Println("subs => ", subs)
 	// for _, v := range subs {
@@ -294,4 +270,8 @@ func (s *mqttServer) Publish() {
 			}(v)
 		}
 	}
+}
+
+func (s *mqttServer) handleSubscribe(conn net.Conn, data []byte) {
+	log.Println("handling subscribe...")
 }
