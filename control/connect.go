@@ -152,6 +152,7 @@ func (p *ConnectPacket) Parse(b []byte) error {
 
 	payload := new(ConnectPayload)
 	log.Println("length of bytes => ", len(b))
+	log.Println("payload of header => ", b[headerLen:])
 	if err = json.Unmarshal(b[headerLen:], &payload); err != nil {
 		return err
 	}

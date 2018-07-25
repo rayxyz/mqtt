@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -43,21 +44,19 @@ func handleConn(conn net.Conn) {
 	ch := make(chan []byte)
 	ech := make(chan error)
 	go func(ch chan []byte, ech chan error) {
-		tmp := make([]byte, 1024)
 		counter := 0
+		reader := bufio.NewReader(conn)
 		for {
-			n, err := conn.Read(tmp)
+			data, err := reader.ReadBytes('\r')
+			// n, err := conn.Read(b)
 			if err != nil && err != io.EOF {
 				ech <- err
 				break
 			}
 			counter++
-			if n > 0 {
-				log.Println("counter => ", counter, " n => ", n)
-				if n < len(tmp) {
-					tmp = tmp[:n]
-				}
-				ch <- tmp
+			if len(data) > 0 {
+				log.Println("counter => ", counter, " len(data) => ", len(data))
+				ch <- data
 			}
 		}
 	}(ch, ech)
@@ -123,8 +122,8 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 			conn.Close()
 			return
 		}
-		packdata := append(ackpackData, '\n')
-		conn.Write(packdata)
+		ackpackData = append(ackpackData, '\r')
+		conn.Write(ackpackData)
 		conn.Close()
 		return
 	}
@@ -140,8 +139,8 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 				conn.Close()
 				return
 			}
-			packdata := append(ackpackData, '\n')
-			conn.Write(packdata)
+			ackpackData = append(ackpackData, '\r')
+			conn.Write(ackpackData)
 			conn.Close()
 			delete(store.SessionMap, connpack.Payload.ClientID)
 			log.Println("disconnected client => ", connpack.Payload.ClientID)
@@ -159,8 +158,8 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 				conn.Close()
 				return
 			}
-			packdata := append(ackpackData, '\n')
-			conn.Write(packdata)
+			ackpackData = append(ackpackData, '\r')
+			conn.Write(ackpackData)
 			conn.Close()
 			return
 		}
@@ -179,8 +178,8 @@ func (s *mqttServer) handleConnect(conn net.Conn, data []byte) {
 		conn.Close()
 		return
 	}
-	packdata := append(ackpackData, '\n')
-	conn.Write(packdata)
+	ackpackData = append(ackpackData, '\r')
+	conn.Write(ackpackData)
 }
 
 func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
@@ -200,7 +199,7 @@ func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
 		log.Println("error of acking publish => ", err)
 		conn.Close()
 	}
-	ackpackData = append(ackpackData, '\n')
+	ackpackData = append(ackpackData, '\r')
 	conn.Write(ackpackData)
 
 	message.PutMessage(&message.Message{
@@ -213,7 +212,7 @@ func (s *mqttServer) handlePublish(conn net.Conn, data []byte) {
 		TopicFilter: "dxxx",
 	})
 
-	////
+	// time.Sleep(1 * time.Second)
 	server.publish()
 }
 
@@ -236,38 +235,40 @@ func (s *mqttServer) publish() {
 	// }
 	for _, v := range store.SessionMap {
 		if v.Conn != nil {
-			go func(session *store.Session) {
-				content := "Hello Client! client_id => " + session.ClientID
-				var buf bytes.Buffer
-				if err := json.NewEncoder(&buf).Encode(content); err != nil {
-					log.Println(err)
-					return
-				}
-				pubpack := &control.PublishPacket{
-					Header: &control.PublishHeader{
-						PacKID: 12345,
-					},
-					Payload: buf.Bytes(),
-				}
+			// go func(session *store.Session) {
+			content := "Hello Client! client_id => " + v.ClientID
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(content); err != nil {
+				log.Println(err)
+				return
+			}
+			pubpack := &control.PublishPacket{
+				Header: &control.PublishHeader{
+					PacKID: 12345,
+				},
+				Payload: buf.Bytes(),
+			}
 
-				pbs, err := pubpack.Marshal()
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				pbs = append(pbs, '\n')
+			pbs, err := pubpack.Marshal()
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			pbs = append(pbs, '\r')
 
-				log.Println("Writing message to client...")
-				log.Println("data to response => ", pubpack)
-				log.Println("write message done.")
+			log.Println("Writing message to client...")
+			log.Println("data to response => ", pubpack)
+			log.Println("write message done.")
 
-				_, err = session.Conn.Write(pbs)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				log.Println("After sending the publish message.")
-			}(v)
+			log.Println("v.Conn => ", v.Conn, " ", v.Conn.RemoteAddr())
+
+			_, err = v.Conn.Write(pbs)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			log.Println("After sending the publish message.")
+			// }(v)
 		}
 	}
 }

@@ -19,37 +19,50 @@ type Client struct {
 }
 
 // Run the client
-func (c *Client) Run(url string) {
+func (c *Client) Run(serverURL string) {
 	fmt.Println("Running MQTT client...")
 	// client := &Client{}
 	ch := make(chan int)
-	go c.Connect(ch, url)
+	go c.Connect(ch, serverURL)
 	<-ch
 	// The goroutines block on sending to the unbuffered channel.
 	// A minimal change unblocks the goroutines is to create
 	// a buffered channel with capacity
 	c.Datach = make(chan []byte, 1)
-	go c.receive()
+
+	ech := make(chan error)
+	go func(datach chan []byte, ech chan error) {
+		counter := 0
+		// Since the buffer is not persistent across iterations, any messages
+		// received before the new Reader is created will be lost. So, here I
+		// create the reader outside of the for loop.
+		reader := bufio.NewReader(c.Conn)
+		for {
+			data, err := reader.ReadBytes('\r')
+			if err != nil && err != io.EOF {
+				log.Println("error of reading content")
+				c.Conn.Close()
+				ech <- err
+				break
+			}
+			if len(data) > 0 {
+				counter++
+				log.Println("counter => ", counter, " len(data) => ", len(data))
+				datach <- data
+			}
+		}
+	}(c.Datach, ech)
+
 	for {
 		select {
 		case data := <-c.Datach:
 			log.Println("data >>>>>> received => ", data)
 			go c.handlePacket(data)
+		case err := <-ech:
+			log.Println(err)
+			break
 		default:
 			// do nothing here
-		}
-	}
-}
-
-func (c *Client) receive() {
-	for {
-		data, err := bufio.NewReader(c.Conn).ReadBytes('\n')
-		if err != nil && err != io.EOF {
-			log.Println("error of reading content")
-			c.Conn.Close()
-		}
-		if len(data) > 0 {
-			c.Datach <- data
 		}
 	}
 }
@@ -94,6 +107,7 @@ func (c *Client) Connect(ch chan int, addr string) {
 		log.Println(err)
 		return
 	}
+	packdata = append(packdata, '\r')
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -111,6 +125,8 @@ func (c *Client) handleConnAck(data []byte) {
 }
 
 func (c *Client) handlePublish(data []byte) {
+	log.Println("c.Conn => ", c.Conn, " c.Conn.LocalAddr => ", c.Conn.LocalAddr())
+	log.Println("data to be parsed => ", data)
 	pubpack := new(control.PublishPacket)
 	if err := pubpack.Parse(data); err != nil {
 		log.Println("parse publish packet err => ", err)
@@ -166,6 +182,8 @@ func (c *Client) Publish(content interface{}) {
 		log.Println(err)
 		return
 	}
+	pbs = append(pbs, '\r')
+
 	_, err = c.Conn.Write(pbs)
 	if err != nil {
 		log.Println(err)
