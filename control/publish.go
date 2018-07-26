@@ -13,10 +13,10 @@ const (
 
 // PublishHeader : Publish header
 type PublishHeader struct {
-	PackType  int
-	DUPFlag   int
-	QoSLevel  int
-	RETAIN    int
+	PackType  uint8
+	DUPFlag   uint8
+	QoSLevel  uint8
+	RETAIN    uint8
 	RemainLen int
 
 	TopicName []byte
@@ -68,7 +68,7 @@ func (header *PublishHeader) marshal(payloadLen int) ([]byte, error) {
 
 // Parse : parse the publish packet
 func (header *PublishHeader) parse(b []byte) error {
-	header.PackType = int(b[0] >> 4)
+	header.PackType = b[0] >> 4
 	remainLenDigits, err := ParseRemainLenDigits(b[1:5])
 	if err != nil {
 		return err

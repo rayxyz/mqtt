@@ -235,44 +235,53 @@ func (s *mqttServer) publish() {
 	// }
 	for _, v := range store.SessionMap {
 		if v.Conn != nil {
-			// go func(session *store.Session) {
-			content := "Hello Client! client_id => " + v.ClientID
-			var buf bytes.Buffer
-			if err := json.NewEncoder(&buf).Encode(content); err != nil {
-				log.Println(err)
-				return
-			}
-			pubpack := &control.PublishPacket{
-				Header: &control.PublishHeader{
-					PacKID: 12345,
-				},
-				Payload: buf.Bytes(),
-			}
+			go func(session *store.Session) {
+				content := "Hello Client! client_id => " + session.ClientID
+				var buf bytes.Buffer
+				if err := json.NewEncoder(&buf).Encode(content); err != nil {
+					log.Println(err)
+					return
+				}
+				pubpack := &control.PublishPacket{
+					Header: &control.PublishHeader{
+						PacKID: 12345,
+					},
+					Payload: buf.Bytes(),
+				}
 
-			pbs, err := pubpack.Marshal()
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			pbs = append(pbs, '\r')
+				pbs, err := pubpack.Marshal()
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				pbs = append(pbs, '\r')
 
-			log.Println("Writing message to client...")
-			log.Println("data to response => ", pubpack)
-			log.Println("write message done.")
+				log.Println("Writing message to client...")
+				log.Println("data to response => ", pubpack)
+				log.Println("write message done.")
 
-			log.Println("v.Conn => ", v.Conn, " ", v.Conn.RemoteAddr())
+				log.Println("v.Conn => ", session.Conn, " ", session.Conn.RemoteAddr())
 
-			_, err = v.Conn.Write(pbs)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			log.Println("After sending the publish message.")
-			// }(v)
+				_, err = session.Conn.Write(pbs)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				log.Println("After sending the publish message.")
+			}(v)
 		}
 	}
 }
 
 func (s *mqttServer) handleSubscribe(conn net.Conn, data []byte) {
 	log.Println("handling subscribe...")
+	subpack := new(control.SubscribePacket)
+	if err := subpack.Parse(data); err != nil {
+		log.Println(err)
+		return
+	}
+	message.NewSub(&message.Sub{
+		ClientID:    "xxxxx",
+		TopicFilter: "dxxx",
+	})
 }
