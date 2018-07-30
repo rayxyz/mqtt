@@ -1,10 +1,13 @@
 package control
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"mqtt/utils"
+	"strings"
 )
 
 const (
@@ -16,14 +19,14 @@ const (
 type SubscribeHeader struct {
 	PackType  uint8
 	RemainLen int
-	PacKID    uint16
+	PackID    uint16
 }
 
 // TopicFilter :
 type TopicFilter struct {
 	LenMSB     uint8
 	LenLSB     uint8
-	Filter     []byte
+	Filter     string
 	RequestQoS uint8
 }
 
@@ -53,6 +56,7 @@ func (header *SubscribeHeader) marshal(payloadLen int) ([]byte, error) {
 	b := make([]byte, fixedHeaderLen+subscribeVarHeaderLen)
 	b[0] = 1<<7 | 1<<1
 	b[1] = byte(remainLen)
+	binary.BigEndian.PutUint16(b[2:4], header.PackID)
 	if err := header.parse(b); err != nil {
 		log.Println(err)
 	}
@@ -64,6 +68,7 @@ func (header *SubscribeHeader) marshal(payloadLen int) ([]byte, error) {
 // Parse : parse the subscribe packet
 func (header *SubscribeHeader) parse(b []byte) error {
 	header.PackType = b[0] >> 4
+	header.PackID = binary.BigEndian.Uint16(b[2:4])
 	remainLenDigits, err := ParseRemainLenDigits(b[1:5])
 	if err != nil {
 		return err
@@ -73,6 +78,7 @@ func (header *SubscribeHeader) parse(b []byte) error {
 		return err
 	}
 	log.Println("remain_len_parsed => ", remainLen)
+	header.RemainLen = remainLen
 
 	return nil
 }
@@ -80,6 +86,13 @@ func (header *SubscribeHeader) parse(b []byte) error {
 // Marshal : marsal subscribe packet
 func (p *SubscribePacket) Marshal() ([]byte, error) {
 	var pbs []byte
+	payload := p.Payload
+	if strings.EqualFold(payload.ClientID, utils.Blank) {
+		return nil, errors.New("invalid client identifier")
+	}
+	// for _, v := range payload.TopicFilters {
+	//
+	// }
 	payloadBytes, err := json.Marshal(p.Payload)
 	if err != nil {
 		return nil, err
@@ -118,5 +131,5 @@ func (header *SubscribeHeader) String() string {
 	if header == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("PackType=%d RemainLen=%d PackID=%d", header.PackType, header.RemainLen, header.PacKID)
+	return fmt.Sprintf("PackType=%d RemainLen=%d PackID=%d", header.PackType, header.RemainLen, header.PackID)
 }

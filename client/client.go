@@ -14,6 +14,7 @@ import (
 
 // Client : MQTT Client
 type Client struct {
+	ID     string
 	Datach chan []byte
 	Conn   net.Conn
 }
@@ -125,8 +126,6 @@ func (c *Client) handleConnAck(data []byte) {
 }
 
 func (c *Client) handlePublish(data []byte) {
-	log.Println("c.Conn => ", c.Conn, " c.Conn.LocalAddr => ", c.Conn.LocalAddr())
-	log.Println("data to be parsed => ", data)
 	pubpack := new(control.PublishPacket)
 	if err := pubpack.Parse(data); err != nil {
 		log.Println("parse publish packet err => ", err)
@@ -187,6 +186,7 @@ func (c *Client) Publish(content interface{}) {
 	_, err = c.Conn.Write(pbs)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	log.Println("After sending the publish message.")
 }
@@ -194,5 +194,32 @@ func (c *Client) Publish(content interface{}) {
 // Subscribe topics
 func (c *Client) Subscribe() {
 	log.Println("subscribing...")
-	log.Println("")
+	subpack := &control.SubscribePacket{
+		Header: &control.SubscribeHeader{
+			PacKID: 12345,
+		},
+		Payload: &control.SubscribePayload{
+			ClientID: c.ID,
+			TopicFilters: []*control.TopicFilter{
+				&control.TopicFilter{
+					Filter:     "/status/*",
+					RequestQoS: 0,
+				},
+			},
+		},
+	}
+
+	subpackBytes, err := subpack.Marshal()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	subpackBytes = append(subpackBytes, '\r')
+
+	_, err = c.Conn.Write(subpackBytes)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println("subscribe data has been sent")
 }
